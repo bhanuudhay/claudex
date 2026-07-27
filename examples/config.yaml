@@ -1,0 +1,42 @@
+# claudex configuration — the common case.
+#
+# Location (first match wins):
+#   $CLAUDEX_CONFIG
+#   ~/.config/claudex/config.yaml
+#   ~/.claudex.yaml
+#
+# Keep this file mode 600 if it ever holds a literal token.
+
+version: 1
+
+defaults:
+  # Credential mechanism used when an account does not name its own.
+  provider: oauth
+
+  # Maximum account switches inside a single command.
+  max_switches: 3
+
+  # Failure classes allowed to trigger a switch. Remove one to make claudex
+  # surface it to you instead of rotating. `unknown` is never rotatable.
+  rotate_on: [usage_limit, rate_limit, overloaded, auth_expired, credit_exhausted]
+
+  # true = errors only. Equivalent to passing --cfo-quiet every time.
+  quiet: false
+
+accounts:
+  # Lowest priority number runs first. Mint each token by logging in as that
+  # account and running `claude setup-token`.
+  - name: Personal
+    provider: oauth
+    priority: 1
+    token: ${CLAUDE_TOKEN_1}
+
+  - name: Work
+    provider: oauth
+    priority: 2
+    token: ${CLAUDE_TOKEN_2}
+
+  - name: Backup
+    provider: oauth
+    priority: 3
+    token: ${CLAUDE_TOKEN_3}

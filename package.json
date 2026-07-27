@@ -1,0 +1,40 @@
+{
+  "name": "claudex",
+  "version": "0.1.0",
+  "description": "Drop-in wrapper for the Claude CLI that fails over between configured accounts on usage limits, rate limits and auth errors.",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "bin": {
+    "claudex": "bin/claudex.js"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "examples",
+    "docs",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run build && node --test \"test/unit/*.test.js\" \"test/integration/*.test.js\"",
+    "test:unit": "npm run build && node --test \"test/unit/*.test.js\"",
+    "test:integration": "npm run build && node --test \"test/integration/*.test.js\"",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "claude",
+    "claude-code",
+    "cli",
+    "failover",
+    "account-rotation"
+  ],
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "esbuild": "^0.28.1",
+    "typescript": "^5.7.0"
+  }
+}

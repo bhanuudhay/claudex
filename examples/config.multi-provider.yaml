@@ -1,0 +1,65 @@
+# Every credential mechanism claudex supports, and how each behaves.
+#
+#   oauth      token injected per process. Shares ~/.claude, so a conversation
+#              interrupted by a limit can be resumed on the next account.
+#              Cross-platform. This is the default and the recommended one.
+#
+#   configdir  a separate CLAUDE_CONFIG_DIR per account, each with its own
+#              `claude auth login`. Fully isolated settings, MCP servers and
+#              history — which also means a conversation cannot be resumed
+#              across the boundary. Cross-platform.
+#
+#   keychain   swaps the machine-wide macOS keychain item for the duration of
+#              one command. Mutates global state: other `claude` processes
+#              running at the same time will see the swap. macOS only.
+#              Use only when an account cannot mint a long-lived token.
+
+version: 1
+
+# Point claudex at a specific binary if the real CLI is not on PATH, or if you
+# installed the `claude` shim and want to be explicit.
+claude_path: ~/.local/bin/claude
+
+defaults:
+  provider: oauth
+  max_switches: 4
+  rotate_on: [usage_limit, rate_limit, overloaded, auth_expired, credit_exhausted]
+  quiet: false
+
+accounts:
+  # Token from an environment variable.
+  - name: Personal
+    provider: oauth
+    priority: 1
+    token: ${CLAUDE_TOKEN_1}
+
+  # Token from the claudex credential store, written by `claudex accounts add`.
+  - name: Work
+    provider: oauth
+    priority: 2
+    token: store:Work
+
+  # Token read from a file managed by a secret manager.
+  - name: Team
+    provider: oauth
+    priority: 3
+    token: file:~/.secrets/claude-team-token
+
+  # Token read from a macOS keychain item you created yourself.
+  - name: Contract
+    provider: oauth
+    priority: 4
+    token: keychain:claudex/contract
+
+  # Separate CLI profile with its own login.
+  - name: Isolated
+    provider: configdir
+    priority: 5
+    config_dir: ~/.claude-profiles/isolated
+
+  # Whole-credential swap through the macOS keychain.
+  - name: Legacy
+    provider: keychain
+    priority: 6
+    keychain_service: Claude Code-credentials
+    keychain_account: legacy@example.com
