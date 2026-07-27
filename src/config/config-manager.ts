@@ -96,16 +96,52 @@ export async function loadConfig(env: NodeJS.ProcessEnv = process.env): Promise<
   const warning = await permissionWarning(path, contents);
   if (warning) config.warnings.push(warning);
 
-  // Environment accounts extend a config file rather than replacing it, so a
-  // CI job can add a token to a checked-in config without editing the file.
   const envConfig = loadEnvConfig(env);
-  if (envConfig) {
-    const existing = new Set(config.accounts.map((a) => a.name.toLowerCase()));
-    for (const account of envConfig.accounts) {
-      if (existing.has(account.name.toLowerCase())) continue;
-      config.accounts.push(account);
-    }
-  }
+  if (envConfig) mergeEnvAccounts(config, envConfig.accounts, env);
 
   return { config, fromEnv: false };
+}
+
+/**
+ * Merge `CLAUDE_TOKEN_*` accounts over the ones a config file defines.
+ *
+ * The environment wins, which is the precedence people expect and the one that
+ * makes a checked-in config usable in CI: an account named in both places keeps
+ * its file definition but takes the environment's token, and takes the
+ * environment's priority when `CLAUDEX_ACCOUNT_<N>_PRIORITY` was set
+ * explicitly. A default priority is not treated as an override, since it was
+ * inferred from the variable's number rather than chosen.
+ *
+ * Accounts that appear only in the environment are appended.
+ */
+function mergeEnvAccounts(
+  config: ClaudexConfig,
+  envAccounts: ClaudexConfig['accounts'],
+  env: NodeJS.ProcessEnv,
+): void {
+  for (const envAccount of envAccounts) {
+    const index = config.accounts.findIndex(
+      (account) => account.name.toLowerCase() === envAccount.name.toLowerCase(),
+    );
+    if (index === -1) {
+      config.accounts.push(envAccount);
+      continue;
+    }
+
+    const fileAccount = config.accounts[index];
+    if (!fileAccount) continue;
+
+    const merged = { ...fileAccount, token: envAccount.token };
+    const explicitPriority =
+      envAccount.envIndex !== undefined &&
+      env[`CLAUDEX_ACCOUNT_${envAccount.envIndex}_PRIORITY`]?.trim();
+    if (explicitPriority) merged.priority = envAccount.priority;
+
+    config.accounts[index] = merged;
+    config.warnings.push(
+      `account "${fileAccount.name}": using the token from CLAUDE_TOKEN_${envAccount.envIndex}` +
+        (explicitPriority ? ` and priority ${envAccount.priority} from the environment` : '') +
+        ` (environment overrides ${config.source})`,
+    );
+  }
 }

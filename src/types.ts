@@ -41,6 +41,12 @@ export interface AccountConfig {
   keychainAccount?: string;
   /** Set when the account cannot be used at all (e.g. `${VAR}` did not resolve). */
   unconfigured?: string;
+  /**
+   * Index N of the `CLAUDE_TOKEN_<N>` that produced this account, for accounts
+   * built from the environment. Used when merging environment settings over a
+   * config file; not part of the user-facing config format.
+   */
+  envIndex?: number;
 }
 
 export interface ConfigDefaults {

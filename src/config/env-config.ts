@@ -37,7 +37,13 @@ export function loadEnvConfig(env: NodeJS.ProcessEnv = process.env): ClaudexConf
         priority = parsed;
       }
     }
-    accounts.push({ name, provider: 'oauth', priority, token: `env:CLAUDE_TOKEN_${index}` });
+    accounts.push({
+      name,
+      provider: 'oauth',
+      priority,
+      token: `env:CLAUDE_TOKEN_${index}`,
+      envIndex: index,
+    });
   }
 
   const defaults = { ...DEFAULT_DEFAULTS, rotateOn: [...DEFAULT_DEFAULTS.rotateOn] };
