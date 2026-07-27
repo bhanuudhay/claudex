@@ -62,7 +62,7 @@ What it is careful about:
 Requires Node.js ≥ 20 and a working Claude CLI.
 
 ```bash
-git clone https://github.com/<you>/claudex.git && cd claudex
+git clone https://github.com/bhanuudhay/claudex.git && cd claudex
 ./install.sh                 # installs `claudex` to ~/.local/bin
 ```
 
