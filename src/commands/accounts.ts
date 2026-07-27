@@ -11,6 +11,7 @@ import {
   writeConfigFile,
 } from '../config/write-config.js';
 import { configSearchPaths } from '../config/config-manager.js';
+import { TOKEN_PROVIDERS } from '../config/schema.js';
 import { formatDuration } from '../rotation/rotation-engine.js';
 import { promptLine, promptSecret } from '../util/prompt.js';
 import { logger } from '../log/logger.js';
@@ -81,7 +82,7 @@ async function addAccount(argv: string[]): Promise<number> {
     return 2;
   }
   const provider = ((flagValue(argv, '--provider') ??
-    (await promptLine('Provider [oauth]: ', 'oauth'))) as ProviderKind) || 'oauth';
+    (await promptLine('Provider [profile]: ', 'profile'))) as ProviderKind) || 'profile';
   const priority = Number.parseInt(flagValue(argv, '--priority') ?? '', 10);
 
   const account: AccountConfig = {
@@ -90,7 +91,7 @@ async function addAccount(argv: string[]): Promise<number> {
     priority: Number.isNaN(priority) ? 0 : priority,
   };
 
-  if (provider === 'oauth') {
+  if (TOKEN_PROVIDERS.includes(provider)) {
     logger.line('');
     logger.line('Mint a long-lived token for this account:');
     logger.line('  1. In a separate terminal, log in as the account you want to add');

@@ -81,7 +81,7 @@ describe('subcommands', () => {
       const result = await runClaudex(sandbox, ['health']);
       assert.equal(result.code, 0);
       assert.match(result.stdout, /ACCOUNT\s+PROVIDER\s+HEALTH/);
-      assert.match(result.stdout, /Personal\s+oauth\s+ok\s+pro/);
+      assert.match(result.stdout, /Personal\s+profile\s+ok\s+pro/);
       const calls = await sandbox.calls();
       assert.ok(calls.every((call) => call.args[0] === 'auth'), 'health must only run auth status');
     } finally {
@@ -99,7 +99,7 @@ describe('subcommands', () => {
       assert.match(status.stdout, /unavailable:/);
 
       const list = await runClaudex(sandbox, ['accounts', 'list']);
-      assert.match(list.stdout, /Personal\s+oauth\s+1\s+exhausted/);
+      assert.match(list.stdout, /Personal\s+profile\s+1\s+exhausted/);
       assert.match(list.stdout, /Work \*/, 'the active account is marked');
     } finally {
       await sandbox.cleanup();

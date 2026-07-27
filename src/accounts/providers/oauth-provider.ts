@@ -13,11 +13,11 @@ import { baseMods, otherAuthVars, type SpawnMods, type TokenProvider } from './p
  *         /proc/<pid>/environ, which matters on shared machines.
  *   env — CLAUDE_CODE_OAUTH_TOKEN, the universally supported path.
  *
- * `fd` is preferred but not assumed: if an attempt using fd injection fails
- * with an auth error, the retry manager records `fdInjectionWorks: false` in
- * persisted state and every later run uses `env`. That self-heals on builds or
- * platforms where the file-descriptor path is unavailable, without requiring a
- * separate probe on the hot path.
+ * `fd` is preferred but not assumed: when an attempt using fd injection fails
+ * with an auth error, the retry manager re-tests the same account once with
+ * `env`. Only if that retry *succeeds* is the descriptor to blame, and only then
+ * does `fdInjectionWorks: false` reach persisted state. An expired token fails
+ * both ways, so it is judged as an account failure and rotation continues.
  */
 export class OAuthProvider implements TokenProvider {
   readonly kind = 'oauth' as const;

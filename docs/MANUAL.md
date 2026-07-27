@@ -111,7 +111,7 @@ shell, survives reboots.
 Non-interactive (CI, scripts):
 
 ```bash
-printf '%s' "$TOKEN" | claudex accounts add --name Work --provider oauth --priority 2
+printf '%s' "$TOKEN" | claudex accounts add --name Work --provider profile --priority 2
 ```
 
 
@@ -175,8 +175,8 @@ claudex health
 
 ```
 ACCOUNT   PROVIDER  HEALTH  PLAN         DETAIL
-Personal  oauth     ok      oauth_token  -
-Work      oauth     ok      oauth_token  -
+Personal  profile   ok      oauth_token  -
+Work      profile   ok      oauth_token  -
 ```
 
 `health` runs `claude auth status --json` per account and spends no quota.
@@ -203,19 +203,19 @@ version: 1
 claude_path: ~/.local/bin/claude
 
 defaults:
-  provider: oauth
+  provider: profile
   max_switches: 3
   rotate_on: [usage_limit, rate_limit, overloaded, auth_expired, credit_exhausted]
   quiet: false
 
 accounts:
   - name: Personal
-    provider: oauth
+    provider: profile
     priority: 1
     token: ${CLAUDE_TOKEN_1}
 
   - name: Work
-    provider: oauth
+    provider: profile
     priority: 2
     token: store:Work
 ```
@@ -243,7 +243,7 @@ accounts:
 | `name`                                  | how the account appears in output and in `--cfo-account` |
 | `priority`                              | lower runs first; ties broken by declaration order       |
 | `token`                                 | a *reference*, see below                                 |
-| `provider`                              | `oauth` (default), `configdir`, or `keychain`            |
+| `provider`                              | `profile` (default; `oauth` means the same), `oauth-shared`, `configdir`, or `keychain` |
 | `config_dir`                            | required for `configdir`                                 |
 | `keychain_service` / `keychain_account` | required for `keychain`                                  |
 
@@ -272,10 +272,24 @@ resolved, so a broken reference on account #3 costs nothing while #1 is healthy.
 
 | `provider`          | How it works                                                                    | Resume across accounts             | Platforms  |
 | ------------------- | ------------------------------------------------------------------------------- | ---------------------------------- | ---------- |
-| `oauth` *(default)* | injects a token per process, sharing `~/.claude`                                | yes                                | all        |
+| `profile` *(default)* | injects a token per process into a per-account config dir; transcripts and your own setup stay shared | yes | all |
+| `oauth-shared`      | injects a token per process, sharing all of `~/.claude`                          | yes                                | all        |
 | `configdir`         | separate `CLAUDE_CONFIG_DIR` per account, each with its own `claude auth login` | **no** — session history is siloed | all        |
 | `keychain`          | swaps the machine-wide macOS keychain item for one command                      | yes                                | macOS only |
 
+
+`profile` is the default because the token is not the only per-account state the
+CLI keeps: the stored login (`.credentials.json`), the cached account identity
+(`.claude.json`) and the usage counters all live in `CLAUDE_CONFIG_DIR`. Sharing
+that directory while swapping only the token is why a switched-to account used to
+report the previous account's expired token and `/usage`. Each account gets its own
+copy under `~/.config/claudex/profiles/<account>/` — override with `config_dir:` —
+seeded once from your real `.claude.json` minus the identity and usage keys, so
+project trust and MCP servers carry over. `projects/` (the transcripts), plus
+`settings.json`, `CLAUDE.md`, `commands`, `agents`, `skills`, `plugins`, `hooks`,
+`plans` and `todos` are symlinked back to the real directory, which is what keeps
+cross-account `--resume` working. `provider: oauth` selects this; `oauth-shared`
+restores the old shared-directory behaviour.
 
 `configdir` is for accounts that need genuinely separate CLI state (different
 orgs, different MCP servers). The cost: a conversation interrupted by a limit

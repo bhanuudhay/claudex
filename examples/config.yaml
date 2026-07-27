@@ -11,7 +11,7 @@ version: 1
 
 defaults:
   # Credential mechanism used when an account does not name its own.
-  provider: oauth
+  provider: profile
 
   # Maximum account switches inside a single command.
   max_switches: 3
@@ -27,16 +27,16 @@ accounts:
   # Lowest priority number runs first. Mint each token by logging in as that
   # account and running `claude setup-token`.
   - name: Personal
-    provider: oauth
+    provider: profile
     priority: 1
     token: ${CLAUDE_TOKEN_1}
 
   - name: Work
-    provider: oauth
+    provider: profile
     priority: 2
     token: ${CLAUDE_TOKEN_2}
 
   - name: Backup
-    provider: oauth
+    provider: profile
     priority: 3
     token: ${CLAUDE_TOKEN_3}

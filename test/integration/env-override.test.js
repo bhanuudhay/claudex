@@ -98,7 +98,7 @@ describe('environment overrides the config file', () => {
         CLAUDE_TOKEN_3: 'sk-ant-oat01-env-three-000',
         CLAUDEX_ACCOUNT_3_NAME: 'Extra',
       });
-      assert.match(result.stdout, /Extra\s+oauth/);
+      assert.match(result.stdout, /Extra\s+profile/);
     } finally {
       await sandbox.cleanup();
     }

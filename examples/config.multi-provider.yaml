@@ -1,8 +1,18 @@
 # Every credential mechanism claudex supports, and how each behaves.
 #
-#   oauth      token injected per process. Shares ~/.claude, so a conversation
-#              interrupted by a limit can be resumed on the next account.
-#              Cross-platform. This is the default and the recommended one.
+#   profile    token injected per process into a per-account config dir. The
+#              stored login, cached account identity and usage counters are that
+#              account's own, so a switched-to account never reports the previous
+#              account's expired token or /usage. Transcripts and your own setup
+#              (settings, CLAUDE.md, commands, agents, skills, plugins, hooks)
+#              stay shared, so an interrupted conversation still resumes on the
+#              next account. Cross-platform. Default, and the recommended one.
+#              `provider: oauth` is accepted and means this.
+#
+#   oauth-shared
+#              token injected per process, sharing all of ~/.claude. What
+#              `oauth` used to mean; keep it only if something depends on every
+#              account seeing one config dir.
 #
 #   configdir  a separate CLAUDE_CONFIG_DIR per account, each with its own
 #              `claude auth login`. Fully isolated settings, MCP servers and
@@ -21,7 +31,7 @@ version: 1
 claude_path: ~/.local/bin/claude
 
 defaults:
-  provider: oauth
+  provider: profile
   max_switches: 4
   rotate_on: [usage_limit, rate_limit, overloaded, auth_expired, credit_exhausted]
   quiet: false
@@ -29,25 +39,25 @@ defaults:
 accounts:
   # Token from an environment variable.
   - name: Personal
-    provider: oauth
+    provider: profile
     priority: 1
     token: ${CLAUDE_TOKEN_1}
 
   # Token from the claudex credential store, written by `claudex accounts add`.
   - name: Work
-    provider: oauth
+    provider: profile
     priority: 2
     token: store:Work
 
   # Token read from a file managed by a secret manager.
   - name: Team
-    provider: oauth
+    provider: profile
     priority: 3
     token: file:~/.secrets/claude-team-token
 
   # Token read from a macOS keychain item you created yourself.
   - name: Contract
-    provider: oauth
+    provider: profile
     priority: 4
     token: keychain:claudex/contract
 

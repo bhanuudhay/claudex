@@ -1,6 +1,12 @@
 /** Shared domain types. Kept dependency-free so every module can import them. */
 
-export type ProviderKind = 'oauth' | 'configdir' | 'keychain';
+/**
+ * `oauth` is accepted in config files but normalised to `profile` at parse time:
+ * injecting a token while leaving CLAUDE_CONFIG_DIR shared cannot switch the
+ * cached identity and usage state that lives there. `oauth-shared` is the opt-out
+ * for anyone who wants that original behaviour back.
+ */
+export type ProviderKind = 'profile' | 'oauth' | 'oauth-shared' | 'configdir' | 'keychain';
 
 /**
  * How a failed `claude` invocation is classified. Drives rotation policy.
@@ -34,7 +40,11 @@ export interface AccountConfig {
   priority: number;
   /** Unresolved token reference: `${VAR}`, `env:VAR`, `keychain:svc/acct`, `file:/p`, `store`, or a literal. */
   token?: string;
-  /** `configdir` provider: the CLAUDE_CONFIG_DIR to use. */
+  /**
+   * `configdir` provider: the CLAUDE_CONFIG_DIR to use.
+   * `profile` provider: where this account's isolated state lives; defaults to
+   * `<claudex config>/profiles/<account>`.
+   */
   configDir?: string;
   /** `keychain` provider: which keychain item holds this account's credentials. */
   keychainService?: string;

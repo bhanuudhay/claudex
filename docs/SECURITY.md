@@ -88,7 +88,7 @@ The `keychain` provider is opt-in and carries risks the others do not:
   which is briefly visible in the process list. This is a limitation of the
   `security` CLI, not something claudex can work around.
 
-Use `oauth` unless an account genuinely cannot mint a long-lived token.
+Use `profile` unless an account genuinely cannot mint a long-lived token.
 
 ## Threat model, stated plainly
 

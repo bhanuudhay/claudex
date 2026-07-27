@@ -75,10 +75,36 @@ describe('parseConfig', () => {
 
   test('applies defaults and preserves token references verbatim', () => {
     const config = parseConfig(base, 'test.yaml', { T1: 'a', T2: 'b' });
-    assert.equal(config.defaults.provider, 'oauth');
+    // `profile` is the default: token injection alone leaves the CLI reading the
+    // previous account's cached identity and usage out of the shared config dir.
+    assert.equal(config.defaults.provider, 'profile');
     assert.equal(config.defaults.maxSwitches, 3);
     // Tokens stay unresolved at parse time; resolution is lazy and per-run.
     assert.equal(config.accounts[0].token, '${T1}');
+  });
+
+  test('normalises provider oauth to profile and says so', () => {
+    // Injecting a token into the shared config dir left the CLI reporting the
+    // previously logged-in account's expired token and usage after a switch, so
+    // the old name now selects the isolating provider.
+    const config = parseConfig(
+      { accounts: [{ name: 'Personal', provider: 'oauth', token: 'sk-ant-oat01-x' }] },
+      'test.yaml',
+      {},
+    );
+    assert.equal(config.accounts[0].provider, 'profile');
+    assert.equal(config.notes.length, 1);
+    assert.match(config.notes[0], /own profile directory/);
+  });
+
+  test('provider oauth-shared keeps the shared config dir behaviour', () => {
+    const config = parseConfig(
+      { accounts: [{ name: 'Personal', provider: 'oauth-shared', token: 'sk-ant-oat01-x' }] },
+      'test.yaml',
+      {},
+    );
+    assert.equal(config.accounts[0].provider, 'oauth-shared');
+    assert.deepEqual(config.notes, []);
   });
 
   test('defaults an oauth account with no token to the credential store', () => {
