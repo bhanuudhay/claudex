@@ -385,9 +385,27 @@ The Claude TUI does not exit when it hits a limit — it draws a banner and keep
 running, on a stdout claudex deliberately does not intercept. So there is **no
 mid-session hot swap**.
 
-What you get: claudex picks a healthy account before launch and tags the session
-with an id. If the session ends with an account-level failure, it switches
-accounts and relaunches with `--resume`, continuing where you were.
+What you get instead: claudex picks a healthy account before launch and tags the
+session with an id. **When you quit the session**, claudex reads the session
+transcript, and if the limit is there it switches accounts and relaunches Claude
+with `--resume` — same conversation, full history, no retyping. You do exactly
+one thing: quit.
+
+```console
+$ claudex
+✓ Using Work
+  [ you work; Claude shows "5-hour limit reached · resets 9:00 PM" ]
+  [ you type /exit ]
+⚠ Work exhausted (five_hour)
+↻ Switching to Personal
+  [ Claude reopens on Personal, same conversation ]
+```
+
+**Quit with `/exit` or Ctrl-D, not Ctrl-C.** A signalled exit is treated as "the
+user interrupted this", which never spends an account switch — the same rule
+that stops a Ctrl-C during a long print-mode run from burning an account. After
+a Ctrl-C, run `claudex` again and it will start on the next healthy account,
+though as a new conversation unless you pass `--resume`.
 
 Print mode (`-p`, pipes, scripts) gets the full transparent retry.
 

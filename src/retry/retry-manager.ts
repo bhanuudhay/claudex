@@ -5,7 +5,7 @@ import { providerFor } from '../accounts/providers/index.js';
 import type { SpawnMods } from '../accounts/providers/provider.js';
 import { TokenResolutionError } from '../accounts/token-source.js';
 import { classify, describeFailure } from '../detect/error-detector.js';
-import { readTranscriptTail } from '../detect/session-probe.js';
+import { readTranscriptSince } from '../detect/session-probe.js';
 import { runClaude, type RunResult } from '../exec/claude-executor.js';
 import { toResumeArgs } from '../exec/args.js';
 import { logger } from '../log/logger.js';
@@ -100,6 +100,8 @@ export async function runWithFailover(options: FailoverOptions): Promise<RunResu
       `provider=${account.provider} injection=${mods.injection} resumeAcross=${mods.resumeAcrossAccounts}`,
     );
 
+    // Bounds the transcript probe below: only what this attempt wrote counts.
+    const attemptStartedAt = new Date();
     let result: RunResult;
     try {
       result = await forcedResult(account.name) ?? await runClaude({
@@ -113,7 +115,7 @@ export async function runWithFailover(options: FailoverOptions): Promise<RunResu
       await mods.cleanup();
     }
 
-    const failure = await classifyRun(result, options);
+    const failure = await classifyRun(result, options, attemptStartedAt);
 
     if (!failure) {
       await manager.markSuccess(account.name, options.sessionId);
@@ -191,7 +193,11 @@ export async function runWithFailover(options: FailoverOptions): Promise<RunResu
  * inside the TUI rather than written to stderr, so the session transcript is
  * consulted as a second source.
  */
-async function classifyRun(result: RunResult, options: FailoverOptions): Promise<Failure | null> {
+async function classifyRun(
+  result: RunResult,
+  options: FailoverOptions,
+  attemptStartedAt: Date,
+): Promise<Failure | null> {
   const direct = classify({
     exitCode: result.exitCode,
     signal: result.signal,
@@ -201,7 +207,11 @@ async function classifyRun(result: RunResult, options: FailoverOptions): Promise
   if (direct) return direct;
   if (!options.interactive || !options.sessionId || result.signal) return null;
 
-  const transcript = await readTranscriptTail(options.sessionId, options.cwd ?? process.cwd());
+  const transcript = await readTranscriptSince(
+    options.sessionId,
+    attemptStartedAt,
+    options.cwd ?? process.cwd(),
+  );
   if (!transcript) return null;
   // The transcript is evidence of what happened during the session, not of how
   // it ended, so it is only consulted with a synthetic non-zero exit code.

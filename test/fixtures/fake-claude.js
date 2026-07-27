@@ -122,6 +122,21 @@ if (args.includes('--version')) {
 }
 
 const step = nextStep();
+
+// Simulate an interactive session recording an API error in its transcript.
+// The real CLI appends timestamped entries while it runs, and that file is the
+// only evidence claudex has for a limit hit inside the TUI.
+if (step.transcript && process.env.FAKE_CLAUDE_TRANSCRIPT_PATH) {
+  appendFileSync(
+    process.env.FAKE_CLAUDE_TRANSCRIPT_PATH,
+    JSON.stringify({
+      type: 'assistant',
+      isApiErrorMessage: true,
+      timestamp: new Date().toISOString(),
+      message: { content: [{ type: 'text', text: step.transcript }] },
+    }) + '\n',
+  );
+}
 // `{ "fail": "...", "stdout": "..." }` emits output *before* failing, which is
 // how a mid-response limit looks to the wrapper.
 const behavior = step.fail

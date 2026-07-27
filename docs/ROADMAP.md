@@ -24,11 +24,12 @@ prompt-cache warmth) and `least-used` (drain the account with most headroom
 first). The rotation engine is already the single decision point, so this is a
 contained change.
 
-**Better interactive detection.** The TUI limit banner is drawn on stdout, which
-claudex does not intercept, so interactive detection currently relies on stderr
-plus the session transcript. Watching the transcript file *during* the session
-(rather than after it exits) would let claudex notice a limit in real time and
-offer the switch immediately, still without a PTY.
+**Live interactive detection.** The TUI limit banner is drawn on stdout, which
+claudex does not intercept, so interactive detection reads the session
+transcript once the session ends — which is why a limit inside the TUI costs one
+quit-and-relaunch. Watching that file *during* the session would let claudex
+notice a limit in real time and offer the switch immediately, still without a
+PTY. This is the cheapest remaining win for interactive users.
 
 ## Medium term
 
