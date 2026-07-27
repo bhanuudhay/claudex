@@ -53,11 +53,21 @@ npm install && npm run build && node bin/claudex.js --cfo-help
 
 ### About the `claude` shim
 
-`--as-claude` writes a `claude` command earlier on your PATH so existing
-commands, scripts and editor integrations gain failover without being changed.
-It cannot recurse: claudex resolves the real binary by skipping any executable
-carrying its shim marker, refuses to run if it detects it has spawned itself, and
-the installer records the real binary's path.
+`--as-claude` writes a `claude` command into its own directory
+(`~/.local/share/claudex/shim`, or `%LOCALAPPDATA%\claudex\shim`) which you put
+at the **front** of your PATH. Existing commands, scripts and editor
+integrations then gain failover without being changed:
+
+```bash
+export PATH="$HOME/.local/share/claudex/shim:$PATH"
+```
+
+The shim never goes next to the real binary. On a normal install
+`~/.local/bin/claude` is a *symlink* into `~/.local/share/claude/versions/`, and
+writing a file over that symlink would destroy the real 250 MB CLI. The
+installer also resolves the real binary before creating anything, refuses to
+shim something that is already a shim or that does not run, and records the
+resolved path inside the shim.
 
 It is still the higher-blast-radius option — every `claude` invocation on the
 machine goes through the wrapper. Undo at any time:
@@ -65,6 +75,9 @@ machine goes through the wrapper. Undo at any time:
 ```bash
 ./install.sh --uninstall
 ```
+
+Uninstall only removes files carrying claudex's own marker; it refuses to delete
+anything else.
 
 ## Configure
 
