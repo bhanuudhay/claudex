@@ -20,9 +20,9 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "npm run build && node --test \"test/unit/*.test.js\" \"test/integration/*.test.js\"",
-    "test:unit": "npm run build && node --test \"test/unit/*.test.js\"",
-    "test:integration": "npm run build && node --test \"test/integration/*.test.js\"",
+    "test": "npm run build && node --test test/unit/*.test.js test/integration/*.test.js",
+    "test:unit": "npm run build && node --test test/unit/*.test.js",
+    "test:integration": "npm run build && node --test test/integration/*.test.js",
     "prepublishOnly": "npm run build"
   },
   "keywords": [
