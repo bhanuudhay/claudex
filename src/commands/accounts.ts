@@ -139,12 +139,18 @@ async function addAccount(argv: string[]): Promise<number> {
 
   let accounts: AccountConfig[] = [];
   let defaults;
+  let previousPriority: number | undefined;
   if (existingPath) {
     const { config } = await loadConfig();
+    const existing = config.accounts.find((entry) => entry.name.toLowerCase() === name.toLowerCase());
+    previousPriority = existing?.priority;
     accounts = config.accounts.filter((entry) => entry.name.toLowerCase() !== name.toLowerCase());
     defaults = config.defaults;
   }
-  if (!account.priority) account.priority = accounts.length + 1;
+  // Re-adding an account is the normal way to replace an expired token, so it
+  // has to keep its place in the order. Appending would silently demote the
+  // account the user just repaired.
+  if (!account.priority) account.priority = previousPriority ?? accounts.length + 1;
   accounts.push(account);
 
   const next = starterConfig(accounts);

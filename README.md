@@ -1,14 +1,15 @@
 # claudex
 
-The Claude CLI, with automatic account failover.
+**The Claude CLI, with automatic account failover.**
 
-`claudex` forwards every command to the real `claude` binary. When the account
-you are on hits its usage limit, gets rate limited, or stops authenticating, it
-switches to the next account you configured and runs the command again — without
-you retyping anything.
+`claudex` is a drop-in wrapper around the official `claude` command. It forwards
+everything you type, straight through. When the account you are on hits its
+usage limit, gets rate limited, or stops authenticating, claudex switches to the
+next account you configured and runs the command again — without you retyping
+anything.
 
 ```console
-$ claudex "Refactor this project"
+$ claudex -p "Refactor this project"
 ✓ Using Personal
 ⚠ Personal exhausted (five_hour)
 ↻ Switching to Work
@@ -16,214 +17,155 @@ $ claudex "Refactor this project"
 ```
 
 Everything else is untouched: same flags, same output bytes, same exit codes,
-same TUI. The status lines above go to stderr, so `claudex -p "x" > out.txt`
-writes exactly what `claude -p "x" > out.txt` would.
+the same interactive session. Wrapper messages go to stderr, so
+`claudex -p "x" > out.txt` writes exactly what `claude -p "x" > out.txt` would.
 
-> **Before you configure this:** rotating between accounts to continue past a
-> usage limit may conflict with Anthropic's Consumer Terms and Usage Policy.
-> claudex is for accounts you own and are authorised to use. See
-> [docs/SECURITY.md](docs/SECURITY.md).
+> [!IMPORTANT]
+> Rotating between accounts to continue past a usage limit may conflict with
+> Anthropic's Consumer Terms and Usage Policy. claudex is built for accounts you
+> own and are authorised to use. See [docs/SECURITY.md](docs/SECURITY.md).
 
-**Full manual:** [docs/MANUAL.md](docs/MANUAL.md) — install, accounts,
-configuration, precedence rules, account selection, troubleshooting.
-**Command reference:** [docs/COMMANDS.md](docs/COMMANDS.md).
+---
 
-## Requirements
+## Contents
 
-- Node.js ≥ 20
-- The real Claude CLI installed and working
-- Two or more Claude accounts you are authorised to use
+- [Why](#why) · [Install](#install) · [Quick start](#quick-start)
+- [How it works](#how-it-works) · [What triggers a switch](#what-triggers-a-switch)
+- [Configuration](#configuration) · [Commands](#commands)
+- [Security](#security) · [Development](#development) · [Docs](#documentation)
+
+---
+
+## Why
+
+If you have more than one Claude account, hitting a 5-hour limit means stopping
+work, or manually logging out and back in. claudex removes that step. It knows
+which accounts you have, which are healthy, and which are cooling down, and it
+picks one for every command.
+
+What it is careful about:
+
+- **Fidelity.** stdout is byte-identical to an unwrapped run. The TUI owns the
+  terminal outright — nothing sits between you and it.
+- **Not over-reacting.** A failing build, a bad prompt, a `Ctrl-C` — none of
+  those rotate. Only account-level failures do.
+- **Not duplicating work.** If a limit lands after output has already been
+  printed, claudex resumes the same conversation on the next account rather
+  than replaying your prompt.
+- **Credentials.** Tokens are passed on a file descriptor, never in the child's
+  environment, and every log line is redacted.
+
+---
 
 ## Install
 
-```bash
-git clone <this repo> claudex && cd claudex
-./install.sh                 # installs `claudex`
-./install.sh --as-claude     # also installs a `claude` shim (optional)
-```
-
-Windows:
-
-```powershell
-.\install.ps1
-.\install.ps1 -AsClaude
-```
-
-Or from the repo without installing:
+Requires Node.js ≥ 20 and a working Claude CLI.
 
 ```bash
-npm install && npm run build && node bin/claudex.js --cfo-help
+git clone https://github.com/<you>/claudex.git && cd claudex
+./install.sh                 # installs `claudex` to ~/.local/bin
 ```
 
-### About the `claude` shim
+Windows: `.\install.ps1`
 
-`--as-claude` writes a `claude` command into its own directory
-(`~/.local/share/claudex/shim`, or `%LOCALAPPDATA%\claudex\shim`) which you put
-at the **front** of your PATH. Existing commands, scripts and editor
-integrations then gain failover without being changed:
+Optionally shadow `claude` itself, so existing commands and editor integrations
+gain failover without being changed:
 
 ```bash
-export PATH="$HOME/.local/share/claudex/shim:$PATH"
+./install.sh --as-claude
+export PATH="$HOME/.local/share/claudex/shim:$PATH"   # add to your shell profile
 ```
 
-The shim never goes next to the real binary. On a normal install
-`~/.local/bin/claude` is a *symlink* into `~/.local/share/claude/versions/`, and
-writing a file over that symlink would destroy the real 250 MB CLI. The
-installer also resolves the real binary before creating anything, refuses to
-shim something that is already a shim or that does not run, and records the
-resolved path inside the shim.
+The shim goes in its own directory, never next to the real binary — on a normal
+install `~/.local/bin/claude` is a symlink into `~/.local/share/claude/versions/`,
+and writing over it would destroy the CLI. Undo any time with
+`./install.sh --uninstall`, which only removes files carrying claudex's marker.
 
-It is still the higher-blast-radius option — every `claude` invocation on the
-machine goes through the wrapper. Undo at any time:
+---
 
-```bash
-./install.sh --uninstall
-```
+## Quick start
 
-Uninstall only removes files carrying claudex's own marker; it refuses to delete
-anything else.
-
-## Configure
-
-### Quickest path
+Mint a long-lived token per account — log in as that account and run
+`claude setup-token` — then:
 
 ```bash
-claudex init                              # writes ~/.config/claudex/config.yaml
-claudex accounts add --name Personal      # paste a token, stored mode 0600
+claudex init                            # writes ~/.config/claudex/config.yaml
+claudex accounts add --name Personal    # paste the token; input is hidden
 claudex accounts add --name Work
-claudex health                            # verify both
+claudex health                          # verify both, spends no quota
 ```
 
-To mint a token: log in as that account, then run `claude setup-token`. It prints
-an `sk-ant-oat01-…` token.
-
-### Config file
-
-```yaml
-version: 1
-
-defaults:
-  provider: oauth
-  max_switches: 3
-  rotate_on: [usage_limit, rate_limit, overloaded, auth_expired, credit_exhausted]
-  quiet: false
-
-accounts:
-  - name: Personal
-    priority: 1
-    token: ${CLAUDE_TOKEN_1}
-
-  - name: Work
-    priority: 2
-    token: ${CLAUDE_TOKEN_2}
+```console
+$ claudex health
+ACCOUNT   PROVIDER  HEALTH  PLAN         DETAIL
+Personal  oauth     ok      oauth_token  -
+Work      oauth     ok      oauth_token  -
 ```
 
-Searched in order: `$CLAUDEX_CONFIG`, `~/.config/claudex/config.yaml`,
-`~/.claudex.yaml`. See [`examples/`](examples/) for a fully commented file and a
-multi-provider example.
-
-### Environment only
-
-No config file needed — `CLAUDE_TOKEN_1`, `CLAUDE_TOKEN_2`, … become accounts in
-numeric order:
+Now use it exactly like `claude`, from any directory:
 
 ```bash
-export CLAUDE_TOKEN_1=sk-ant-oat01-...
-export CLAUDE_TOKEN_2=sk-ant-oat01-...
-export CLAUDEX_ACCOUNT_1_NAME=Personal   # optional
-claudex -p "say hi"
-```
-
-See [`examples/.env.example`](examples/.env.example).
-
-### Token references
-
-Never put a literal token in a config file if you can avoid it:
-
-| Reference | Source |
-|---|---|
-| `${CLAUDE_TOKEN_1}` / `env:CLAUDE_TOKEN_1` | environment variable |
-| `file:~/.secrets/claude-token` | first line of a file |
-| `keychain:claudex/personal` | macOS keychain item |
-| `store:Personal` | claudex credential store (written by `accounts add`) |
-
-### Credential mechanisms
-
-| `provider` | How it works | Resume across accounts | Platforms |
-|---|---|---|---|
-| `oauth` *(default)* | injects a token per process, sharing `~/.claude` | yes | all |
-| `configdir` | separate `CLAUDE_CONFIG_DIR` per account, each with its own login | no — history is siloed | all |
-| `keychain` | swaps the machine-wide macOS keychain item for one command | yes | macOS only |
-
-`keychain` mutates global state and is opt-in; read
-[docs/SECURITY.md](docs/SECURITY.md#the-keychain-provider) first.
-
-## Usage
-
-Use it exactly like `claude`:
-
-```bash
+claudex                          # interactive session
 claudex "explain this repo"
 claudex -p "summarise src/" --model opus
-claudex --resume 4f1c…
-echo "review this" | claudex -p
+echo "review this diff" | claudex -p
 ```
 
-### claudex's own flags
+Prefer environment variables? No config file needed — `CLAUDE_TOKEN_1`,
+`CLAUDE_TOKEN_2`, … become accounts in order. claudex also reads its own env
+file at `~/.config/claudex/.env`, so nothing has to be exported.
 
-Stripped before forwarding; never seen by `claude`.
+---
 
-| Flag | Effect |
-|---|---|
-| `--cfo-account <name>` | use this account for this run |
-| `--cfo-max-switches <n>` | cap switches for this run |
-| `--cfo-no-rotate` | run once, never fail over |
-| `--cfo-quiet` | errors only |
-| `--cfo-verbose` | explain each attempt |
-| `--cfo-debug` | verbose plus internals |
-| `--cfo-help`, `--cfo-version` | wrapper help and version |
+## How it works
 
-### Subcommands
+```
+you ──▶ claudex ──▶ picks an account ──▶ runs the real claude
+                          ▲                      │
+                          └──── switch ◀─── classifies how it exited
+```
 
-| Command | Purpose |
-|---|---|
-| `claudex init` | write a starter config |
-| `claudex accounts list \| add \| remove` | manage accounts |
-| `claudex status` | active account, next account, cooldowns |
-| `claudex health [--deep]` | check every credential (`--deep` sends one tiny prompt) |
-| `claudex use <name>` / `--clear` | pin or unpin an account |
-| `claudex reset [name]` | clear recorded cooldowns |
-| `claudex checkup [--timing]` | diagnose the installation |
+claudex never talks to the API. It chooses a credential, runs `claude` with it,
+watches how that exits, and may run it again with a different one.
 
-Prefix any of them with `cfo` (`claudex cfo status`) if a name ever collides
-with a real `claude` subcommand. Everything not in this table is forwarded.
+**Print mode** (`-p`, pipes, scripts): fully transparent. The command fails,
+claudex switches, reruns, you see one clean answer.
 
-### Exit codes
+**Interactive mode**: the Claude TUI does not exit when it hits a limit — it
+draws a banner and keeps running, on a stdout claudex deliberately does not
+intercept, because anything sitting in the middle of a full-screen TUI has to
+re-interpret every cursor move, resize and paste. So there is no mid-session hot
+swap. Instead: quit the session with `/exit`, and claudex reads the session
+transcript, switches accounts, and relaunches with `--resume` — same
+conversation, full history.
 
-| Code | Meaning |
-|---|---|
-| `77` | every configured account is unavailable |
-| anything else | whatever `claude` returned |
+```console
+$ claudex
+✓ Using Work
+  [ you work; Claude shows "5-hour limit reached · resets 9:00 PM" ]
+  [ you type /exit ]
+⚠ Work exhausted (five_hour)
+↻ Switching to Personal
+  [ Claude reopens on Personal, same conversation ]
+```
+
+Quitting with `Ctrl-C` deliberately does *not* switch — a user interrupt should
+never spend an account.
+
+---
 
 ## What triggers a switch
 
-| Situation | Behaviour |
-|---|---|
-| 5-hour or weekly usage limit | switch, cooldown until the reported reset time |
-| Rate limited (429) | switch, cooldown from `retry-after` |
-| Service overloaded (529/5xx) | retry the **same** account twice with backoff, then switch |
-| Auth expired or revoked | switch, account marked as needing re-auth |
-| Credit balance too low | switch, 24-hour cooldown |
-| Anything else | **no switch** — the error is yours, and is passed through untouched |
+| Situation | Behaviour | Cooldown |
+|---|---|---|
+| 5-hour or weekly usage limit | switch | until the reported reset, else 5 h / 7 d |
+| Rate limited (429) | switch | `retry-after`, else 60 s |
+| Service overloaded (529/5xx) | retry the **same** account twice with backoff, then switch | 30 s, account stays healthy |
+| Auth expired or revoked | switch, marked `needs_reauth` | until you re-add the token |
+| Credit balance too low | switch | 24 h |
+| **Anything else** | **no switch** — passed through untouched | none |
 
-That last row is deliberate: a failing build, a bad prompt or a `Ctrl-C` must
-never spend an account.
-
-If a limit lands *after* some output has already been printed, claudex cannot
-un-print it, so it resumes the same conversation on the next account instead of
-replaying your prompt.
-
-When nothing is left:
+When nothing is left, claudex says so precisely and exits `77`:
 
 ```console
 ✗ All 3 configured accounts are unavailable.
@@ -235,60 +177,121 @@ When nothing is left:
   Earliest availability: Personal, in 4h 12m
 ```
 
-## Interactive sessions
+---
 
-The Claude TUI does not exit when it hits a limit — it draws a banner and keeps
-running, on a stdout that claudex deliberately does not intercept. So there is no
-mid-session hot swap.
+## Configuration
 
-What you get instead: claudex picks a healthy account before launch and tags the
-session with an id. If the session ends with an account-level failure, it
-switches accounts and relaunches with `--resume`, continuing where you were.
+`~/.config/claudex/config.yaml`:
 
-Print mode (`-p`, pipes, scripts) gets the full transparent retry.
+```yaml
+version: 1
 
-## Troubleshooting
+defaults:
+  provider: oauth
+  max_switches: 3
+  rotate_on: [usage_limit, rate_limit, overloaded, auth_expired, credit_exhausted]
+  sticky: false        # true = stay on the last successful account
 
-```bash
-claudex checkup            # binary resolution, config, file permissions
-claudex checkup --timing   # wrapper overhead
-claudex status             # cooldowns, active account, injection mode
-claudex --cfo-verbose ...  # per-attempt reasoning
+accounts:
+  - name: Personal
+    priority: 1
+    token: store:Personal      # or ${CLAUDE_TOKEN_1}, file:…, keychain:…
+
+  - name: Work
+    priority: 2
+    token: store:Work
 ```
 
-**"could not find the real claude binary"** — set `claude_path` in your config or
-`CLAUDEX_CLAUDE_BIN` in the environment.
+**Precedence**, highest first: `--cfo-account` → `claudex use` → stickiness (if
+enabled) → `CLAUDEX_ACCOUNT_<N>_PRIORITY` → `priority:` → declaration order. The
+environment overrides the config file, and the claudex env file feeds that chain
+exactly as an exported variable would.
 
-**"claudex resolved to itself"** — a `claude` on your PATH is a claudex shim and
-the real binary was not found behind it. Point `claude_path` at the real one.
+Three credential mechanisms:
 
-**An account is skipped and you disagree** — `claudex reset <name>` clears its
-recorded cooldown, or `claudex use <name>` forces it.
+| `provider` | How | Resume across accounts | Platforms |
+|---|---|---|---|
+| `oauth` *(default)* | token injected per process, sharing `~/.claude` | yes | all |
+| `configdir` | separate `CLAUDE_CONFIG_DIR` per account | no — history is siloed | all |
+| `keychain` | swaps the machine-wide macOS keychain item | yes | macOS only |
 
-**Watch a failover without spending quota:**
+See [`examples/`](examples/) for fully commented configs.
+
+---
+
+## Commands
+
+```bash
+claudex status              # who runs next, and which rule chose it
+claudex health [--deep]     # verify every credential
+claudex accounts list       # state, priority, cooldowns, token source
+claudex accounts add|remove
+claudex use <name>          # pin an account   (--clear to release)
+claudex reset [name]        # clear cooldowns and stickiness
+claudex checkup             # diagnose the installation
+```
+
+Per-run flags, stripped before forwarding: `--cfo-account`, `--cfo-no-rotate`,
+`--cfo-max-switches`, `--cfo-quiet`, `--cfo-verbose`, `--cfo-debug`.
+
+Everything else goes to `claude` unchanged. Full list in
+[docs/COMMANDS.md](docs/COMMANDS.md).
+
+Watch a failover without spending quota:
 
 ```bash
 CLAUDEX_FORCE_FAIL=usage_limit claudex -p "hi"
 ```
 
+---
+
+## Security
+
+- Tokens are passed to the child on **file descriptor 3**, so they never appear
+  in its environment or in `ps -E`. An environment-variable fallback is used
+  only where that is unsupported, and the choice is learned once.
+- Every log line passes through redaction — by token shape *and* by exact match
+  on every secret loaded. A test asserts nothing leaks even at `--cfo-debug`.
+- Stored tokens live in `~/.config/claudex/credentials.json`, mode 600. Runtime
+  state never contains a token.
+- Config files holding a literal token are checked for permissions and warned
+  about.
+
+Details and threat model: [docs/SECURITY.md](docs/SECURITY.md).
+
+---
+
 ## Development
 
 ```bash
 npm install
-npm run build       # esbuild transpile, src/ -> dist/
+npm run build       # esbuild: src/ -> dist/, plus a bundled entry point
 npm run typecheck
-npm test            # 92 tests, no network, no real accounts
+npm test            # 121 tests, no network, no real accounts
 ```
 
-- [docs/MANUAL.md](docs/MANUAL.md) — full user manual: install, accounts,
-  configuration, precedence, account selection, troubleshooting
-- [docs/COMMANDS.md](docs/COMMANDS.md) — one-page reference: every subcommand,
-  flag, environment variable, config key and exit code
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — module map, failure taxonomy,
-  process handling, how to add a provider
-- [docs/SECURITY.md](docs/SECURITY.md) — credential handling and threat model
-- [docs/TESTING.md](docs/TESTING.md) — test layers and the fake-CLI harness
-- [docs/ROADMAP.md](docs/ROADMAP.md) — what is next, and what is deliberately out
+Zero runtime dependencies — including a small YAML reader for the documented
+config subset, so startup stays off the module-resolution path.
+
+Tests run against a scripted stand-in for the Claude CLI that records which
+credential it was handed (as a hash, never the token), so rotation can be
+asserted without a secret reaching a log file. See
+[docs/TESTING.md](docs/TESTING.md).
+
+---
+
+## Documentation
+
+| Document | Contents |
+|---|---|
+| [MANUAL.md](docs/MANUAL.md) | Full guide: install, accounts, configuration, precedence, troubleshooting |
+| [COMMANDS.md](docs/COMMANDS.md) | One-page reference: every command, flag, variable, config key, exit code |
+| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Module map, failure taxonomy, process handling, adding a provider |
+| [SECURITY.md](docs/SECURITY.md) | Credential handling, redaction, threat model |
+| [TESTING.md](docs/TESTING.md) | Test layers and the fake-CLI harness |
+| [ROADMAP.md](docs/ROADMAP.md) | What is next, and what is deliberately out of scope |
+
+---
 
 ## License
 

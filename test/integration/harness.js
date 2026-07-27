@@ -76,14 +76,20 @@ export async function makeSandbox({ accounts = ['Personal', 'Work'], script = []
   };
 }
 
-/** Run claudex with a sandbox environment and collect its output. */
-export function runClaudex(sandbox, args, extraEnv = {}) {
+/**
+ * Run claudex with a sandbox environment and collect its output.
+ * Pass `input` to feed stdin, which is how token prompts are driven in tests.
+ */
+export function runClaudex(sandbox, args, extraEnv = {}, input = null) {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [CLAUDEX_BIN, ...args], {
       env: { ...sandbox.env, ...extraEnv },
       cwd: sandbox.dir,
-      stdio: ['ignore', 'pipe', 'pipe'],
+      stdio: [input === null ? 'ignore' : 'pipe', 'pipe', 'pipe'],
     });
+    if (input !== null) {
+      child.stdin.end(input);
+    }
     let stdout = '';
     let stderr = '';
     child.stdout.setEncoding('utf8');

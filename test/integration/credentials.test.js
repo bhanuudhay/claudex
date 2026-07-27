@@ -214,3 +214,51 @@ describe('config file permissions', () => {
     }
   });
 });
+
+describe('replacing an expired token', () => {
+  test('re-adding an account keeps its priority instead of demoting it', async () => {
+    // Replacing an expired token means running `accounts add` again for an
+    // account that already exists. Appending it would silently move it to the
+    // end of the rotation order, demoting the account just repaired.
+    const sandbox = await makeSandbox({ script: [{ exit: 0 }] });
+    try {
+      const { writeFile, readFile } = await import('node:fs/promises');
+      const { join } = await import('node:path');
+      await writeFile(
+        sandbox.configPath,
+        [
+          'version: 1',
+          'accounts:',
+          '  - name: Personal',
+          '    priority: 1',
+          '    token: store:Personal',
+          '  - name: Work',
+          '    priority: 2',
+          '    token: store:Work',
+        ].join('\n') + '\n',
+        { mode: 0o600 },
+      );
+
+      const result = await runClaudex(
+        sandbox,
+        ['accounts', 'add', '--name', 'Personal', '--provider', 'oauth'],
+        {},
+        'sk-ant-oat01-replacement-token-0000\n',
+      );
+      assert.equal(result.code, 0, result.stderr);
+
+      const config = await readFile(sandbox.configPath, 'utf8');
+      const personal = config.slice(config.indexOf('name: Personal'));
+      assert.match(personal.split('- name:')[0], /priority: 1/, 'Personal must stay at priority 1');
+      assert.match(config, /name: Work[\s\S]*priority: 2/);
+
+      // The new token really landed in the store.
+      const store = JSON.parse(
+        await readFile(join(sandbox.env.XDG_CONFIG_HOME, 'claudex', 'credentials.json'), 'utf8'),
+      );
+      assert.equal(store.tokens.Personal, 'sk-ant-oat01-replacement-token-0000');
+    } finally {
+      await sandbox.cleanup();
+    }
+  });
+});
