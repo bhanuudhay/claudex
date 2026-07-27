@@ -44,10 +44,15 @@ export class RotationEngine {
       if (pinned && excluded.has(pinned.config.name)) return null;
     }
 
-    const sticky = this.#manager.state.activeAccount;
-    if (sticky && !excluded.has(sticky)) {
-      const view = views.find((candidate) => candidate.config.name === sticky);
-      if (view?.eligible) return view.config;
+    // Stickiness is opt-in. When enabled it keeps a run on the last successful
+    // account instead of returning to a higher-priority one, which keeps prompt
+    // caching warm — at the cost of making the configured order look ignored.
+    if (this.#manager.config.defaults.sticky) {
+      const sticky = this.#manager.state.activeAccount;
+      if (sticky && !excluded.has(sticky)) {
+        const view = views.find((candidate) => candidate.config.name === sticky);
+        if (view?.eligible) return view.config;
+      }
     }
 
     for (const view of views) {

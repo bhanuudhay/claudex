@@ -5,7 +5,7 @@ import type { ClaudexConfig } from '../types.js';
 import { configDir, expandTilde, IS_WINDOWS } from '../util/paths.js';
 import { parseYaml } from './mini-yaml.js';
 import { ConfigError, parseConfig } from './schema.js';
-import { loadEnvConfig } from './env-config.js';
+import { applyEnvDefaults, loadEnvConfig } from './env-config.js';
 
 /** Candidate config locations, highest precedence first. */
 export function configSearchPaths(env: NodeJS.ProcessEnv = process.env): string[] {
@@ -96,6 +96,13 @@ export async function loadConfig(env: NodeJS.ProcessEnv = process.env): Promise<
   const warning = await permissionWarning(path, contents);
   if (warning) config.warnings.push(warning);
 
+  // Environment settings override the file's `defaults`, for the same reason
+  // environment accounts override its accounts: the environment is the more
+  // specific, more immediate source.
+  applyEnvDefaults(config.defaults, env);
+  const envClaudePath = env['CLAUDEX_CLAUDE_BIN']?.trim();
+  if (envClaudePath) config.defaults.claudePath = envClaudePath;
+
   const envConfig = loadEnvConfig(env);
   if (envConfig) mergeEnvAccounts(config, envConfig.accounts, env);
 
@@ -138,7 +145,7 @@ function mergeEnvAccounts(
     if (explicitPriority) merged.priority = envAccount.priority;
 
     config.accounts[index] = merged;
-    config.warnings.push(
+    config.notes.push(
       `account "${fileAccount.name}": using the token from CLAUDE_TOKEN_${envAccount.envIndex}` +
         (explicitPriority ? ` and priority ${envAccount.priority} from the environment` : '') +
         ` (environment overrides ${config.source})`,

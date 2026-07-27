@@ -24,6 +24,7 @@ export const DEFAULT_DEFAULTS: ConfigDefaults = {
   maxSwitches: 3,
   rotateOn: ['usage_limit', 'rate_limit', 'overloaded', 'auth_expired', 'credit_exhausted'],
   quiet: false,
+  sticky: false,
 };
 
 function isRecord(value: YamlValue): value is Record<string, YamlValue> {
@@ -95,6 +96,12 @@ function parseDefaults(raw: YamlValue | undefined, warnings: string[]): ConfigDe
   if (quiet !== undefined && quiet !== null) {
     if (typeof quiet !== 'boolean') throw new ConfigError('defaults.quiet must be true or false');
     defaults.quiet = quiet;
+  }
+
+  const sticky = raw['sticky'];
+  if (sticky !== undefined && sticky !== null) {
+    if (typeof sticky !== 'boolean') throw new ConfigError('defaults.sticky must be true or false');
+    defaults.sticky = sticky;
   }
 
   return defaults;
@@ -222,5 +229,5 @@ export function parseConfig(
   }
   if (accounts.length === 0) throw new ConfigError(`${source}: \`accounts\` is empty`);
 
-  return { version: 1, defaults, accounts, source, warnings };
+  return { version: 1, defaults, accounts, source, warnings, notes: [] };
 }

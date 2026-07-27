@@ -1,5 +1,46 @@
-import type { AccountConfig, ClaudexConfig } from '../types.js';
+import type { AccountConfig, ClaudexConfig, ConfigDefaults } from '../types.js';
 import { DEFAULT_DEFAULTS } from './schema.js';
+
+function parseBool(value: string | undefined): boolean | undefined {
+  if (value === undefined) return undefined;
+  const normalised = value.trim().toLowerCase();
+  if (['1', 'true', 'yes', 'on'].includes(normalised)) return true;
+  if (['0', 'false', 'no', 'off'].includes(normalised)) return false;
+  return undefined;
+}
+
+/**
+ * Apply the environment's settings over a set of defaults, whether those came
+ * from a config file or from the built-in ones. Environment wins, so a shell
+ * (or the claudex env file) can drive behaviour without editing any file.
+ */
+export function applyEnvDefaults(
+  defaults: ConfigDefaults,
+  env: NodeJS.ProcessEnv = process.env,
+): ConfigDefaults {
+  const maxSwitches = env['CLAUDEX_MAX_SWITCHES']?.trim();
+  if (maxSwitches) {
+    const parsed = Number.parseInt(maxSwitches, 10);
+    if (!Number.isNaN(parsed) && parsed >= 0) defaults.maxSwitches = parsed;
+  }
+
+  const sticky = parseBool(env['CLAUDEX_STICKY']);
+  if (sticky !== undefined) defaults.sticky = sticky;
+
+  const quiet = parseBool(env['CLAUDEX_QUIET']);
+  if (quiet !== undefined) defaults.quiet = quiet;
+
+  const rotateOn = env['CLAUDEX_ROTATE_ON']?.trim();
+  if (rotateOn) {
+    const classes = rotateOn
+      .split(',')
+      .map((entry) => entry.trim())
+      .filter(Boolean) as ConfigDefaults['rotateOn'];
+    if (classes.length > 0) defaults.rotateOn = classes;
+  }
+
+  return defaults;
+}
 
 /**
  * Config-file-free mode.
@@ -47,11 +88,7 @@ export function loadEnvConfig(env: NodeJS.ProcessEnv = process.env): ClaudexConf
   }
 
   const defaults = { ...DEFAULT_DEFAULTS, rotateOn: [...DEFAULT_DEFAULTS.rotateOn] };
-  const maxSwitches = env['CLAUDEX_MAX_SWITCHES']?.trim();
-  if (maxSwitches) {
-    const parsed = Number.parseInt(maxSwitches, 10);
-    if (!Number.isNaN(parsed) && parsed >= 0) defaults.maxSwitches = parsed;
-  }
+  applyEnvDefaults(defaults, env);
   const claudePath = env['CLAUDEX_CLAUDE_BIN']?.trim();
   if (claudePath) defaults.claudePath = claudePath;
 
@@ -61,5 +98,6 @@ export function loadEnvConfig(env: NodeJS.ProcessEnv = process.env): ClaudexConf
     accounts,
     source: 'environment (CLAUDE_TOKEN_*)',
     warnings,
+    notes: [],
   };
 }

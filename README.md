@@ -26,6 +26,7 @@ writes exactly what `claude -p "x" > out.txt` would.
 
 **Full manual:** [docs/MANUAL.md](docs/MANUAL.md) — install, accounts,
 configuration, precedence rules, account selection, troubleshooting.
+**Command reference:** [docs/COMMANDS.md](docs/COMMANDS.md).
 
 ## Requirements
 
@@ -281,6 +282,8 @@ npm test            # 92 tests, no network, no real accounts
 
 - [docs/MANUAL.md](docs/MANUAL.md) — full user manual: install, accounts,
   configuration, precedence, account selection, troubleshooting
+- [docs/COMMANDS.md](docs/COMMANDS.md) — one-page reference: every subcommand,
+  flag, environment variable, config key and exit code
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — module map, failure taxonomy,
   process handling, how to add a provider
 - [docs/SECURITY.md](docs/SECURITY.md) — credential handling and threat model

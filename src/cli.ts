@@ -8,6 +8,7 @@ import { statusCommand } from './commands/status.js';
 import { resetCommand, useCommand } from './commands/use.js';
 import { ConfigError } from './config/schema.js';
 import { loadConfig } from './config/config-manager.js';
+import { loadEnvFile } from './config/env-file.js';
 import { analyzeArgs, injectSessionId, newSessionId, shouldInjectSessionId } from './exec/args.js';
 import { exitLike, runClaude } from './exec/claude-executor.js';
 import { assertNotRecursing, resolveClaudeBinary } from './exec/resolve-claude.js';
@@ -162,9 +163,19 @@ export async function main(argv: string[]): Promise<void> {
   try {
     assertNotRecursing();
 
+    // Load the claudex env file before anything reads configuration, so
+    // settings placed there behave exactly like exported variables.
+    const envFile = loadEnvFile();
+
     const flags = parseOwnFlags(argv);
     if (flags.level !== undefined) logger.setLevel(flags.level);
     if (process.env['CLAUDEX_DEBUG'] === '1') logger.setLevel(LogLevel.debug);
+    if (envFile.path) {
+      logger.info(`loaded ${envFile.applied.length} setting(s) from ${envFile.path}`);
+      for (const name of envFile.skipped) {
+        logger.debug(`${name} already set in the environment; file value ignored`);
+      }
+    }
 
     if (flags.help) {
       process.stdout.write(HELP);
@@ -215,6 +226,7 @@ async function runPassthrough(flags: ParsedFlags): Promise<never> {
 
   if (config.defaults.quiet && flags.level === undefined) logger.setLevel(LogLevel.quiet);
   for (const warning of config.warnings) logger.warn(warning);
+  for (const note of config.notes) logger.info(note);
 
   const binary = await resolveClaudeBinary({ explicit: config.defaults.claudePath });
   const facts = analyzeArgs(args);

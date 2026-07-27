@@ -104,19 +104,84 @@ describe('environment overrides the config file', () => {
     }
   });
 
-  test('the override is announced rather than applied silently', async () => {
+  test('the override is explained in verbose mode, and silent otherwise', async () => {
     const sandbox = await makeSandbox({ script: [{ exit: 0, stdout: 'ok\n' }] });
     try {
       await writeConfig(sandbox, TWO_ACCOUNTS);
-      const result = await runClaudex(sandbox, ['-p', 'hi'], {
+      const result = await runClaudex(sandbox, ['--cfo-verbose', '-p', 'hi'], {
         FILE_TOKEN_1: 'sk-ant-oat01-file-one-0000',
         FILE_TOKEN_2: 'sk-ant-oat01-file-two-0000',
         CLAUDE_TOKEN_1: 'sk-ant-oat01-env-one-0000',
         CLAUDEX_ACCOUNT_1_NAME: 'Personal',
         CLAUDEX_ACCOUNT_1_PRIORITY: '5',
       });
+      // Expected behaviour is explained on request, not shouted every run.
       assert.match(result.stderr, /environment overrides/);
       assert.match(result.stderr, /priority 5 from the environment/);
+    } finally {
+      await sandbox.cleanup();
+    }
+  });
+});
+
+describe('priority beats stickiness by default', () => {
+  test('a later command returns to the highest-priority account', async () => {
+    const sandbox = await makeSandbox({
+      script: [{ fail: 'usage_limit' }, { exit: 0, stdout: 'ok\n' }, { exit: 0, stdout: 'ok\n' }],
+    });
+    try {
+      // First command fails over to Work and succeeds there.
+      await runClaudex(sandbox, ['-p', 'one']);
+      // Clear the cooldown so Personal is eligible again, then run once more.
+      await runClaudex(sandbox, ['reset']);
+      const status = await runClaudex(sandbox, ['status']);
+      assert.match(status.stdout, /next:\s+Personal\s+\(highest priority available\)/, status.stdout);
+    } finally {
+      await sandbox.cleanup();
+    }
+  });
+
+  test('CLAUDEX_STICKY=1 restores the previous behaviour', async () => {
+    const sandbox = await makeSandbox({
+      script: [{ fail: 'usage_limit' }, { exit: 0, stdout: 'ok\n' }],
+    });
+    try {
+      await runClaudex(sandbox, ['-p', 'one'], { CLAUDEX_STICKY: '1' });
+      await runClaudex(sandbox, ['reset', 'Personal'], { CLAUDEX_STICKY: '1' });
+      const status = await runClaudex(sandbox, ['status'], { CLAUDEX_STICKY: '1' });
+      assert.match(status.stdout, /next:\s+Work\s+\(sticky/, status.stdout);
+    } finally {
+      await sandbox.cleanup();
+    }
+  });
+});
+
+describe('the claudex env file', () => {
+  test('drives configuration without any shell exports', async () => {
+    const sandbox = await makeSandbox({ script: [{ exit: 0, stdout: 'ok\n' }] });
+    try {
+      const { writeFile, mkdir } = await import('node:fs/promises');
+      const { join } = await import('node:path');
+      await writeConfig(sandbox, TWO_ACCOUNTS);
+      const claudexConfigDir = join(sandbox.env.XDG_CONFIG_HOME, 'claudex');
+      await mkdir(claudexConfigDir, { recursive: true });
+      // Deliberately includes the `KEY= value` slip that breaks `source`.
+      await writeFile(
+        join(claudexConfigDir, '.env'),
+        [
+          'FILE_TOKEN_1=sk-ant-oat01-file-one-0000',
+          'FILE_TOKEN_2= sk-ant-oat01-file-two-0000',
+          'CLAUDEX_ACCOUNT_1_NAME=Personal',
+          'CLAUDEX_ACCOUNT_1_PRIORITY=2',
+          'CLAUDEX_ACCOUNT_2_NAME=Work',
+          'CLAUDEX_ACCOUNT_2_PRIORITY=1',
+          'CLAUDE_TOKEN_1=sk-ant-oat01-env-one-0000',
+          'CLAUDE_TOKEN_2=sk-ant-oat01-env-two-0000',
+        ].join('\n'),
+      );
+
+      const result = await runClaudex(sandbox, ['status']);
+      assert.match(result.stdout, /next:\s+Work/, result.stdout + result.stderr);
     } finally {
       await sandbox.cleanup();
     }

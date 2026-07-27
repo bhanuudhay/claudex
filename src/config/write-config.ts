@@ -20,6 +20,7 @@ export function renderConfig(config: Pick<ClaudexConfig, 'defaults' | 'accounts'
   lines.push(`  max_switches: ${config.defaults.maxSwitches}`);
   lines.push(`  rotate_on: [${config.defaults.rotateOn.join(', ')}]`);
   lines.push(`  quiet: ${config.defaults.quiet}`);
+  lines.push(`  sticky: ${config.defaults.sticky}`);
   if (config.defaults.claudePath) {
     lines.push(`  # explicit path to the real Claude CLI`);
     lines.push(`claude_path: ${quoteIfNeeded(config.defaults.claudePath)}`);

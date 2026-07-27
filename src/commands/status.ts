@@ -6,7 +6,7 @@ import type { AccountManager } from '../accounts/account-manager.js';
 /** Explain which selection rule produced the next account. */
 function selectionReason(manager: AccountManager, name: string): string {
   if (manager.state.pinnedAccount === name) return 'pinned by `claudex use`';
-  if (manager.state.activeAccount === name) {
+  if (manager.config.defaults.sticky && manager.state.activeAccount === name) {
     return 'sticky: last successful account — `claudex reset` to release';
   }
   return 'highest priority available';
@@ -52,5 +52,6 @@ export async function statusCommand(): Promise<number> {
 
   process.stdout.write(out.join('\n') + '\n');
   for (const warning of config.warnings) logger.warn(warning);
+  for (const note of config.notes) logger.info(note);
   return 0;
 }

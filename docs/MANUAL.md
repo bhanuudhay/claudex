@@ -2,7 +2,8 @@
 
 A complete guide to installing, configuring and operating claudex.
 
-For what it is and why, see the [README](../README.md). For how it works
+For what it is and why, see the [README](../README.md). For a one-page list of
+every command, flag and variable, see [COMMANDS](COMMANDS.md). For how it works
 internally, see [ARCHITECTURE](ARCHITECTURE.md).
 
 ---
@@ -39,16 +40,20 @@ untouched.
 `~/.local/state/claudex/state.json`. Neither is per-project, so claudex behaves
 identically in every repo. There is nothing to set up per project.
 
-**Selection is sticky, not purely priority-ordered.** Once a command succeeds on
-an account, later commands stay on that account while it remains healthy. This
-keeps prompt caching warm on one organisation instead of thrashing. Priority
-decides where to *start*, and where to go after a failure.
+**Priority means priority.** Commands run on the highest-priority account that
+is currently available. Accounts in cooldown are skipped, so a limit naturally
+moves work to the next one and it moves back when the limit resets. Optional
+stickiness (`sticky: true`, or `CLAUDEX_STICKY=1`) keeps a run on the last
+successful account instead, which keeps prompt caching warm on one organisation
+— at the cost of making a reordered config look ignored.
 
 **Wrapper output goes to stderr, never stdout.** `claudex -p "x" > out.txt`
 writes exactly what `claude -p "x" > out.txt` would. The `✓`/`⚠`/`↻` lines are on
 stderr, so pipes and redirects are unaffected.
 
 ---
+
+
 
 ## 2. Install
 
@@ -72,9 +77,11 @@ every file that can hold a secret.
 
 Windows uses `.\install.ps1` with the same options.
 
-Optionally, [shadow `claude` itself](#10-using-it-in-every-repo).
+Optionally, [shadow](#10-using-it-in-every-repo) `claude` [itself](#10-using-it-in-every-repo).
 
 ---
+
+
 
 ## 3. Add accounts
 
@@ -107,6 +114,8 @@ Non-interactive (CI, scripts):
 printf '%s' "$TOKEN" | claudex accounts add --name Work --provider oauth --priority 2
 ```
 
+
+
 ### Option B — environment variables
 
 No config file needed at all. `CLAUDE_TOKEN_1`, `CLAUDE_TOKEN_2`, … become
@@ -120,18 +129,43 @@ export CLAUDEX_ACCOUNT_1_PRIORITY=1       # optional
 claudex health
 ```
 
-> **`.env` files are not loaded automatically.** claudex reads the *environment*,
-> and a `.env` file is just text on disk. Nothing — not your shell, not
-> claudex — reads it for you. And plain `source .env` is not enough either:
-> `VAR=value` lines set shell variables without exporting them, so child
-> processes never see them. Use:
->
-> ```bash
-> set -a; source /path/to/.env; set +a
-> ```
->
-> Add that to `~/.zshrc` if you want it in every shell. It applies per shell — a
-> terminal that skipped it falls back to the config file.
+### Option C — the claudex env file
+
+If you would rather keep everything in a file but not have to export anything,
+put it where claudex looks for it:
+
+```bash
+mkdir -p ~/.config/claudex
+cat > ~/.config/claudex/.env <<'EOF'
+CLAUDE_TOKEN_1=sk-ant-oat01-...
+CLAUDE_TOKEN_2=sk-ant-oat01-...
+CLAUDEX_ACCOUNT_1_NAME=Personal
+CLAUDEX_ACCOUNT_1_PRIORITY=2
+CLAUDEX_ACCOUNT_2_NAME=Work
+CLAUDEX_ACCOUNT_2_PRIORITY=1
+EOF
+chmod 600 ~/.config/claudex/.env
+```
+
+claudex reads this itself, before anything else, in every shell — no `source`,
+no `export`, nothing to remember. Set `$CLAUDEX_ENV_FILE` to use a different
+path.
+
+Two rules keep it predictable:
+
+- **The real environment always wins.** An exported variable, or a one-off
+  `CLAUDE_TOKEN_1=… claudex …`, beats the file.
+- **Only this location is read.** A `.env` in whatever repo you happen to be in
+  is deliberately ignored, so a checked-out project cannot change which
+  credential runs.
+
+> A `.env` file anywhere *else* is inert. Nothing loads it, and even
+> `source .env` only sets shell variables without exporting them, so a child
+> process never sees them. If you must keep one elsewhere, load it with
+> `set -a; source /path/to/.env; set +a` — or just move it to
+> `~/.config/claudex/.env` and stop thinking about it.
+
+
 
 ### Verify either way
 
@@ -150,6 +184,8 @@ Work      oauth     ok      oauth_token  -
 does cost quota but proves the account can serve a request right now.
 
 ---
+
+
 
 ## 4. Configuration reference
 
@@ -184,48 +220,62 @@ accounts:
     token: store:Work
 ```
 
+
+
 ### `defaults`
 
-| Key | Meaning |
-|---|---|
-| `provider` | credential mechanism for accounts that don't name one |
-| `max_switches` | maximum account switches within a single command |
-| `rotate_on` | which failure classes may trigger a switch — remove one to have claudex surface it instead |
-| `quiet` | errors only, as if `--cfo-quiet` were always passed |
+
+| Key            | Meaning                                                                                    |
+| -------------- | ------------------------------------------------------------------------------------------ |
+| `provider`     | credential mechanism for accounts that don't name one                                      |
+| `max_switches` | maximum account switches within a single command                                           |
+| `rotate_on`    | which failure classes may trigger a switch — remove one to have claudex surface it instead |
+| `quiet`        | errors only, as if `--cfo-quiet` were always passed                                        |
+
+
+
 
 ### `accounts`
 
-| Key | Meaning |
-|---|---|
-| `name` | how the account appears in output and in `--cfo-account` |
-| `priority` | lower runs first; ties broken by declaration order |
-| `token` | a *reference*, see below |
-| `provider` | `oauth` (default), `configdir`, or `keychain` |
-| `config_dir` | required for `configdir` |
-| `keychain_service` / `keychain_account` | required for `keychain` |
+
+| Key                                     | Meaning                                                  |
+| --------------------------------------- | -------------------------------------------------------- |
+| `name`                                  | how the account appears in output and in `--cfo-account` |
+| `priority`                              | lower runs first; ties broken by declaration order       |
+| `token`                                 | a *reference*, see below                                 |
+| `provider`                              | `oauth` (default), `configdir`, or `keychain`            |
+| `config_dir`                            | required for `configdir`                                 |
+| `keychain_service` / `keychain_account` | required for `keychain`                                  |
+
+
+
 
 ### Token references
 
 Prefer a reference over a literal token:
 
-| Reference | Source |
-|---|---|
-| `${CLAUDE_TOKEN_1}` or `env:CLAUDE_TOKEN_1` | environment variable |
-| `file:~/.secrets/claude-token` | first line of a file |
-| `keychain:claudex/personal` | macOS keychain item |
-| `store:Personal` | claudex credential store |
-| `sk-ant-oat01-…` | literal — works, but claudex will warn if the file is group-readable |
+
+| Reference                                   | Source                                                               |
+| ------------------------------------------- | -------------------------------------------------------------------- |
+| `${CLAUDE_TOKEN_1}` or `env:CLAUDE_TOKEN_1` | environment variable                                                 |
+| `file:~/.secrets/claude-token`              | first line of a file                                                 |
+| `keychain:claudex/personal`                 | macOS keychain item                                                  |
+| `store:Personal`                            | claudex credential store                                             |
+| `sk-ant-oat01-…`                            | literal — works, but claudex will warn if the file is group-readable |
+
 
 Resolution is lazy: only the account that actually runs has its credential
 resolved, so a broken reference on account #3 costs nothing while #1 is healthy.
 
 ### Providers
 
-| `provider` | How it works | Resume across accounts | Platforms |
-|---|---|---|---|
-| `oauth` *(default)* | injects a token per process, sharing `~/.claude` | yes | all |
-| `configdir` | separate `CLAUDE_CONFIG_DIR` per account, each with its own `claude auth login` | **no** — session history is siloed | all |
-| `keychain` | swaps the machine-wide macOS keychain item for one command | yes | macOS only |
+
+| `provider`          | How it works                                                                    | Resume across accounts             | Platforms  |
+| ------------------- | ------------------------------------------------------------------------------- | ---------------------------------- | ---------- |
+| `oauth` *(default)* | injects a token per process, sharing `~/.claude`                                | yes                                | all        |
+| `configdir`         | separate `CLAUDE_CONFIG_DIR` per account, each with its own `claude auth login` | **no** — session history is siloed | all        |
+| `keychain`          | swaps the machine-wide macOS keychain item for one command                      | yes                                | macOS only |
+
 
 `configdir` is for accounts that need genuinely separate CLI state (different
 orgs, different MCP servers). The cost: a conversation interrupted by a limit
@@ -236,24 +286,28 @@ sees the swap. Read [SECURITY](SECURITY.md#the-keychain-provider) before using i
 
 ### Environment variables
 
-| Variable | Effect |
-|---|---|
-| `CLAUDE_TOKEN_<N>` | defines account N |
-| `CLAUDEX_ACCOUNT_<N>_NAME` | names account N |
-| `CLAUDEX_ACCOUNT_<N>_PRIORITY` | priority for account N |
-| `CLAUDEX_CONFIG` | explicit config file path |
-| `CLAUDEX_CLAUDE_BIN` | explicit path to the real `claude` |
-| `CLAUDEX_MAX_SWITCHES` | switch cap (environment-only mode) |
-| `CLAUDEX_DEBUG=1` | full debug logging |
-| `CLAUDEX_FORCE_FAIL=<class>` | synthesise a failure without running `claude` — see [Troubleshooting](#11-troubleshooting) |
+
+| Variable                       | Effect                                                                                     |
+| ------------------------------ | ------------------------------------------------------------------------------------------ |
+| `CLAUDE_TOKEN_<N>`             | defines account N                                                                          |
+| `CLAUDEX_ACCOUNT_<N>_NAME`     | names account N                                                                            |
+| `CLAUDEX_ACCOUNT_<N>_PRIORITY` | priority for account N                                                                     |
+| `CLAUDEX_CONFIG`               | explicit config file path                                                                  |
+| `CLAUDEX_CLAUDE_BIN`           | explicit path to the real `claude`                                                         |
+| `CLAUDEX_MAX_SWITCHES`         | switch cap (environment-only mode)                                                         |
+| `CLAUDEX_DEBUG=1`              | full debug logging                                                                         |
+| `CLAUDEX_FORCE_FAIL=<class>`   | synthesise a failure without running `claude` — see [Troubleshooting](#11-troubleshooting) |
+
 
 ---
+
+
 
 ## 5. Precedence: what beats what
 
 **The environment overrides the config file.** An account named in both keeps its
 file definition but takes the environment's token, and takes the environment's
-priority *when `CLAUDEX_ACCOUNT_<N>_PRIORITY` was set explicitly*. A priority
+priority *when* `CLAUDEX_ACCOUNT_<N>_PRIORITY` *was set explicitly*. A priority
 merely inferred from the variable's number is not treated as a choice and will
 not silently reorder your file. Every override is announced on stderr.
 
@@ -266,13 +320,20 @@ Ordered, highest first:
 ```
 --cfo-account <name>                 this run only
 claudex use <name>                   until you clear it
-sticky: last successful account      until it fails or you reset
+sticky last successful account       only when sticky is enabled
 CLAUDEX_ACCOUNT_<N>_PRIORITY         when explicitly set
 priority: in the config file
 declaration order in the config file
 ```
 
+Settings behave the same way: `CLAUDEX_STICKY`, `CLAUDEX_MAX_SWITCHES`,
+`CLAUDEX_ROTATE_ON`, `CLAUDEX_QUIET` and `CLAUDEX_CLAUDE_BIN` all override the
+file's `defaults`. The claudex env file feeds this chain exactly as an exported
+variable would, and loses to a real environment variable.
+
 ---
+
+
 
 ## 6. Daily use
 
@@ -316,6 +377,8 @@ if [ $? -eq 77 ]; then
 fi
 ```
 
+
+
 ### Interactive sessions
 
 The Claude TUI does not exit when it hits a limit — it draws a banner and keeps
@@ -329,6 +392,8 @@ accounts and relaunches with `--resume`, continuing where you were.
 Print mode (`-p`, pipes, scripts) gets the full transparent retry.
 
 ---
+
+
 
 ## 7. Choosing which account runs
 
@@ -346,74 +411,93 @@ token fd: supported
 
 Three ways to change it:
 
-| Want | Command |
-|---|---|
-| One run only | `claudex --cfo-account Work -p "..."` |
-| Until you change it back | `claudex use Work`, then `claudex use --clear` |
+
+| Want                     | Command                                              |
+| ------------------------ | ---------------------------------------------------- |
+| One run only             | `claudex --cfo-account Work -p "..."`                |
+| Until you change it back | `claudex use Work`, then `claudex use --clear`       |
 | Change the default order | edit `priority:` in the config, then `claudex reset` |
 
-**`claudex reset` is the step people miss.** Editing priorities alone does
-nothing while selection is glued to a previously successful account. `reset`
-clears cooldowns *and* releases stickiness.
+
+`claudex reset` **clears cooldowns and releases stickiness.** With the default
+(non-sticky) selection a priority change takes effect immediately; you need
+`reset` only when an account is still in a recorded cooldown, or when stickiness
+is enabled.
 
 A pinned account (`claudex use`) is used even while it is cooling down — you
 asked for it explicitly, so claudex tries it rather than quietly overriding you.
 
 ---
 
+
+
 ## 8. Command reference
+
+
 
 ### claudex's own flags
 
 Stripped before forwarding; `claude` never sees them.
 
-| Flag | Effect |
-|---|---|
-| `--cfo-account <name>` | use this account for this run |
-| `--cfo-max-switches <n>` | cap switches for this run |
-| `--cfo-no-rotate` | run once, never fail over |
-| `--cfo-quiet` | errors only |
-| `--cfo-verbose` | explain each attempt |
-| `--cfo-debug` | verbose plus internals |
-| `--cfo-help` | wrapper help |
-| `--cfo-version` | wrapper version |
+
+| Flag                     | Effect                        |
+| ------------------------ | ----------------------------- |
+| `--cfo-account <name>`   | use this account for this run |
+| `--cfo-max-switches <n>` | cap switches for this run     |
+| `--cfo-no-rotate`        | run once, never fail over     |
+| `--cfo-quiet`            | errors only                   |
+| `--cfo-verbose`          | explain each attempt          |
+| `--cfo-debug`            | verbose plus internals        |
+| `--cfo-help`             | wrapper help                  |
+| `--cfo-version`          | wrapper version               |
+
+
+
 
 ### Subcommands
 
-| Command | Purpose |
-|---|---|
-| `claudex init [--force]` | write a starter config |
-| `claudex accounts list` | table of accounts, state, cooldowns, token source |
-| `claudex accounts add [--name N] [--provider P] [--priority N]` | add an account |
-| `claudex accounts remove <name>` | remove an account and its stored token |
-| `claudex status` | active account, next account and why, cooldowns |
-| `claudex health [--deep]` | check every credential |
-| `claudex use <name>` / `use --clear` | pin / unpin |
-| `claudex reset [name]` | clear cooldowns and stickiness |
-| `claudex checkup [--timing] [--print-config]` | diagnose the installation |
+
+| Command                                                         | Purpose                                           |
+| --------------------------------------------------------------- | ------------------------------------------------- |
+| `claudex init [--force]`                                        | write a starter config                            |
+| `claudex accounts list`                                         | table of accounts, state, cooldowns, token source |
+| `claudex accounts add [--name N] [--provider P] [--priority N]` | add an account                                    |
+| `claudex accounts remove <name>`                                | remove an account and its stored token            |
+| `claudex status`                                                | active account, next account and why, cooldowns   |
+| `claudex health [--deep]`                                       | check every credential                            |
+| `claudex use <name>` / `use --clear`                            | pin / unpin                                       |
+| `claudex reset [name]`                                          | clear cooldowns and stickiness                    |
+| `claudex checkup [--timing] [--print-config]`                   | diagnose the installation                         |
+
 
 Anything else is forwarded to `claude`. If a claudex subcommand name ever
 collides with a real `claude` one, prefix it: `claudex cfo status`.
 
 ### Exit codes
 
-| Code | Meaning |
-|---|---|
-| `77` | every configured account is unavailable |
-| anything else | whatever `claude` returned |
+
+| Code          | Meaning                                 |
+| ------------- | --------------------------------------- |
+| `77`          | every configured account is unavailable |
+| anything else | whatever `claude` returned              |
+
 
 ---
 
+
+
 ## 9. What triggers a switch
 
-| Situation | Behaviour | Cooldown |
-|---|---|---|
-| 5-hour or weekly usage limit | switch | until the reported reset, else 5 h / 7 d |
-| Rate limited (429) | switch | `retry-after`, else 60 s |
-| Service overloaded (529/5xx) | retry the **same** account twice with backoff, then switch | 30 s, account stays healthy |
-| Auth expired or revoked | switch, account marked `needs_reauth` | 1 h |
-| Credit balance too low | switch | 24 h |
-| **Anything else** | **no switch** — passed through untouched | none |
+
+| Situation                    | Behaviour                                                  | Cooldown                                 |
+| ---------------------------- | ---------------------------------------------------------- | ---------------------------------------- |
+| 5-hour or weekly usage limit | switch                                                     | until the reported reset, else 5 h / 7 d |
+| Rate limited (429)           | switch                                                     | `retry-after`, else 60 s                 |
+| Service overloaded (529/5xx) | retry the **same** account twice with backoff, then switch | 30 s, account stays healthy              |
+| Auth expired or revoked      | switch, account marked `needs_reauth`                      | 1 h                                      |
+| Credit balance too low       | switch                                                     | 24 h                                     |
+| **Anything else**            | **no switch** — passed through untouched                   | none                                     |
+
 
 That last row is deliberate. A failing build, a bad prompt, a hook error and a
 `Ctrl-C` all exit non-zero; rotating on them would burn an account for a problem
@@ -428,6 +512,8 @@ Narrow the triggers with `rotate_on` in the config, or disable per run with
 `--cfo-no-rotate`.
 
 ---
+
+
 
 ## 10. Using it in every repo
 
@@ -456,6 +542,8 @@ machine goes through the wrapper.
 
 ---
 
+
+
 ## 11. Troubleshooting
 
 **Start here:**
@@ -466,13 +554,15 @@ claudex status             # who runs next and why
 claudex --cfo-verbose ...  # per-attempt reasoning
 ```
 
+
+
 ### Watch a failover without spending quota
 
 ```bash
 CLAUDEX_FORCE_FAIL=usage_limit claudex -p "hi"
 ```
 
-Synthesises the failure *without spawning `claude` at all*, so nothing is billed.
+Synthesises the failure *without spawning* `claude` *at all*, so nothing is billed.
 Classes: `usage_limit`, `rate_limit`, `overloaded`, `auth_expired`,
 `credit_exhausted`. Scope it with
 `CLAUDEX_FORCE_FAIL_ACCOUNTS=Personal,Work`.
@@ -486,6 +576,8 @@ claude_path: /path/to/claude      # in config.yaml
 CLAUDEX_CLAUDE_BIN=/path/to/claude  # or in the environment
 ```
 
+
+
 ### "claudex resolved to itself"
 
 A `claude` on your PATH is a claudex shim, and the real binary was not found
@@ -496,12 +588,15 @@ behind it. Point `claude_path` at the real one, or reinstall the shim with
 
 Three possible causes, in order of likelihood:
 
-1. **Stickiness.** Run `claudex reset`. Check `claudex status` — it names the
-   rule that chose the account.
-2. **You edited a `.env` that is not loaded.** See
-   [Option B](#option-b--environment-variables); use `set -a; source .env; set +a`.
+1. **A cooldown, or stickiness.** Run `claudex reset`. Check `claudex status` —
+  it names the rule that chose the account.
+2. **You edited a** `.env` **that is not loaded.** Only `~/.config/claudex/.env`
+  (or `$CLAUDEX_ENV_FILE`) is read automatically. See
+  [Option C](#option-c--the-claudex-env-file).
 3. **You edited the wrong file.** `claudex status` prints the config path
-   actually in use.
+  actually in use.
+
+
 
 ### An account is skipped and I disagree
 
@@ -509,6 +604,8 @@ Three possible causes, in order of likelihood:
 claudex reset <name>       # clear its recorded cooldown
 claudex use <name>         # force it, cooldown or not
 ```
+
+
 
 ### Health check fails for one account
 
@@ -530,6 +627,8 @@ diff <(claude --version) <(claudex --version)
 If that differs, file a bug: byte-identical stdout is a hard requirement.
 
 ---
+
+
 
 ## 12. Uninstall
 

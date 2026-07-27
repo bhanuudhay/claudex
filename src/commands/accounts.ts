@@ -63,6 +63,7 @@ async function listAccounts(): Promise<number> {
     process.stdout.write(`pinned: ${manager.state.pinnedAccount} (claudex use --clear to release)\n`);
   }
   for (const warning of config.warnings) logger.warn(warning);
+  for (const note of config.notes) logger.info(note);
   return 0;
 }
 

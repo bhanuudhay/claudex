@@ -56,6 +56,13 @@ export interface ConfigDefaults {
   /** Failure classes that are allowed to trigger rotation. */
   rotateOn: FailureClass[];
   quiet: boolean;
+  /**
+   * Keep using the last successful account even when a higher-priority one is
+   * available. Off by default: priority means priority, and a selection that
+   * silently ignores the configured order is the single most confusing thing
+   * this tool can do. Turn it on to keep prompt caching warm on one org.
+   */
+  sticky: boolean;
   /** Explicit path to the real `claude` binary; overrides discovery. */
   claudePath?: string;
 }
@@ -68,6 +75,13 @@ export interface ClaudexConfig {
   source: string;
   /** Warnings collected during load (bad perms, unresolved vars, ...). */
   warnings: string[];
+  /**
+   * Expected, non-problematic facts about how the config was assembled, such as
+   * the environment overriding a file value. Shown only in verbose mode: they
+   * are useful when diagnosing "why that account", but printing them on every
+   * successful command would be noise.
+   */
+  notes: string[];
 }
 
 export type AccountHealth = 'ok' | 'exhausted' | 'rate_limited' | 'needs_reauth' | 'unknown';

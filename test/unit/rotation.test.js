@@ -19,6 +19,8 @@ const config = {
   ],
 };
 
+const stickyConfig = { ...config, defaults: { ...config.defaults, sticky: true } };
+
 let dir;
 let manager;
 
@@ -89,9 +91,17 @@ describe('RotationEngine', () => {
     assert.equal(new RotationEngine(manager).select().name, 'Work');
   });
 
-  test('sticks to the last successful account instead of resetting to priority 1', async () => {
+  test('returns to the highest-priority account by default', async () => {
+    // Stickiness is opt-in: priority must mean priority, or a reordered config
+    // looks ignored.
     await manager.markSuccess('Work');
-    assert.equal(new RotationEngine(manager).select().name, 'Work');
+    assert.equal(new RotationEngine(manager).select().name, 'Personal');
+  });
+
+  test('sticks to the last successful account when sticky is enabled', async () => {
+    const sticky = await AccountManager.create(stickyConfig, new StateStore(join(dir, 'sticky.json')));
+    await sticky.markSuccess('Work');
+    assert.equal(new RotationEngine(sticky).select().name, 'Work');
   });
 
   test('honours a pinned account even while it is cooling down', async () => {
@@ -139,14 +149,13 @@ describe('formatDuration', () => {
 
 describe('reset', () => {
   test('clears the sticky pointer, not just cooldowns', async () => {
-    // Reordering priorities has no visible effect while selection stays glued
-    // to the previously successful account, so reset must release it.
-    await manager.markSuccess('Work');
-    assert.equal(new RotationEngine(manager).select().name, 'Work');
+    const sticky = await AccountManager.create(stickyConfig, new StateStore(join(dir, 'sticky2.json')));
+    await sticky.markSuccess('Work');
+    assert.equal(new RotationEngine(sticky).select().name, 'Work');
 
-    await manager.reset();
-    assert.equal(manager.state.activeAccount, undefined);
-    assert.equal(new RotationEngine(manager).select().name, 'Personal');
+    await sticky.reset();
+    assert.equal(sticky.state.activeAccount, undefined);
+    assert.equal(new RotationEngine(sticky).select().name, 'Personal');
   });
 
   test('resetting one account only releases stickiness for that account', async () => {
