@@ -136,3 +136,24 @@ describe('formatDuration', () => {
     assert.equal(formatDuration(86_400_000 * 2 + 3_600_000 * 3), '2d 3h');
   });
 });
+
+describe('reset', () => {
+  test('clears the sticky pointer, not just cooldowns', async () => {
+    // Reordering priorities has no visible effect while selection stays glued
+    // to the previously successful account, so reset must release it.
+    await manager.markSuccess('Work');
+    assert.equal(new RotationEngine(manager).select().name, 'Work');
+
+    await manager.reset();
+    assert.equal(manager.state.activeAccount, undefined);
+    assert.equal(new RotationEngine(manager).select().name, 'Personal');
+  });
+
+  test('resetting one account only releases stickiness for that account', async () => {
+    await manager.markSuccess('Work');
+    await manager.reset('Personal');
+    assert.equal(manager.state.activeAccount, 'Work');
+    await manager.reset('Work');
+    assert.equal(manager.state.activeAccount, undefined);
+  });
+});

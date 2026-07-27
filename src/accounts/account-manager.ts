@@ -168,11 +168,25 @@ export class AccountManager {
     });
   }
 
-  /** Clear cooldowns for one account, or all of them. */
+  /**
+   * Clear recorded state for one account, or all of them.
+   *
+   * This also drops the sticky `activeAccount` pointer when it refers to an
+   * account being reset. Without that, a reset would clear cooldowns but leave
+   * selection glued to the previous account, which is the opposite of what
+   * "reset" implies — and is exactly what happens when someone reorders
+   * priorities and cannot work out why nothing changed.
+   */
   async reset(name?: string): Promise<void> {
     this.#state = await this.#store.update((state) => {
-      if (name) delete state.accounts[name];
-      else state.accounts = {};
+      if (name) {
+        delete state.accounts[name];
+        if (state.activeAccount === name) state.activeAccount = undefined;
+      } else {
+        state.accounts = {};
+        state.activeAccount = undefined;
+      }
+      state.lastRotationReason = undefined;
     });
   }
 }
