@@ -16,8 +16,8 @@ export async function initCommand(argv: string[]): Promise<number> {
   await writeConfigFile(
     path,
     starterConfig([
-      { name: 'Personal', provider: 'oauth', priority: 1, token: '${CLAUDE_TOKEN_1}' },
-      { name: 'Work', provider: 'oauth', priority: 2, token: '${CLAUDE_TOKEN_2}' },
+      { name: 'Personal', provider: 'profile', priority: 1, token: '${CLAUDE_TOKEN_1}' },
+      { name: 'Work', provider: 'profile', priority: 2, token: '${CLAUDE_TOKEN_2}' },
     ]),
   );
 

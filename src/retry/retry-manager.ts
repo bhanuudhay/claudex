@@ -63,12 +63,17 @@ export async function runWithFailover(options: FailoverOptions): Promise<RunResu
   let pendingResume = false;
   let previous: AccountConfig | null = null;
   const announce = manager.config.accounts.length > 1;
+  // Set while a single auth failure is being re-tested with environment
+  // injection, to find out whether the file descriptor or the token was at
+  // fault. Never persisted from here: only the outcome of the retry decides.
+  let fdProbe: { account: string } | null = null;
+  let fdProbeSpent = false;
 
   for (;;) {
     const account = rotation.select({ excluded, pinned: options.pinned });
     if (!account) throw new AllAccountsExhaustedError(renderExhaustedReport(manager));
 
-    const useFd = manager.state.fdInjectionWorks !== false;
+    const useFd = manager.state.fdInjectionWorks !== false && !fdProbe;
     const provider = providerFor(account, { useFdInjection: useFd });
 
     let mods: SpawnMods;
@@ -120,17 +125,33 @@ export async function runWithFailover(options: FailoverOptions): Promise<RunResu
     if (!failure) {
       await manager.markSuccess(account.name, options.sessionId);
       if (mods.injection === 'fd') await manager.setFdInjectionWorks(true);
+      // The probe only concludes anything if the environment retry *worked*:
+      // that is the one outcome that acquits the token and convicts fd
+      // injection. A genuinely expired token fails both ways and must not
+      // leave the machine permanently downgraded.
+      else if (mods.injection === 'env' && fdProbe?.account === account.name) {
+        await manager.setFdInjectionWorks(false);
+      }
       if (previous) logger.success('Command resumed');
       return result;
     }
 
-    // Learn once, per machine, whether the file-descriptor credential path
-    // works on this build of the CLI, and fall back without spending a switch.
-    if (failure.class === 'auth_expired' && mods.injection === 'fd' && useFd) {
-      logger.info('token file-descriptor injection rejected; falling back to environment variable');
-      await manager.setFdInjectionWorks(false);
+    // An auth error under fd injection has two possible causes: this build of
+    // the CLI ignores the descriptor, or the token really is expired. Re-test
+    // the same account with the environment variable once to tell them apart,
+    // without spending a switch.
+    if (failure.class === 'auth_expired' && mods.injection === 'fd' && useFd && !fdProbeSpent) {
+      logger.info(
+        `${account.name}: auth rejected with file-descriptor token injection; ` +
+          'retrying once with the environment variable',
+      );
+      fdProbe = { account: account.name };
+      fdProbeSpent = true;
       continue;
     }
+    // The retry failed too, so the descriptor was never the problem: leave the
+    // machine's injection preference alone and judge the account instead.
+    if (fdProbe) fdProbe = null;
 
     if (options.noRotate || !options.rotateOn.includes(failure.class)) {
       if (failure.class !== 'unknown') {

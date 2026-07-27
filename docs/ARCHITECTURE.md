@@ -25,7 +25,7 @@ bin/claudex.js
       ├── accounts/account-manager.ts ── config ⨯ persisted state
       │        │
       │        ├── state/state-store.ts ── locked, atomic JSON
-      │        └── accounts/providers/ ─── oauth │ configdir │ keychain
+      │        └── accounts/providers/ ─── profile │ oauth-shared │ configdir │ keychain
       │                    │
       │                    └── accounts/token-source.ts ── ${VAR} env: file: keychain: store:
       │

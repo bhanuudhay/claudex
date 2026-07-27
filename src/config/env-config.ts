@@ -1,5 +1,5 @@
-import type { AccountConfig, ClaudexConfig, ConfigDefaults } from '../types.js';
-import { DEFAULT_DEFAULTS } from './schema.js';
+import type { AccountConfig, ClaudexConfig, ConfigDefaults, ProviderKind } from '../types.js';
+import { DEFAULT_DEFAULTS, PROVIDER_KINDS } from './schema.js';
 
 function parseBool(value: string | undefined): boolean | undefined {
   if (value === undefined) return undefined;
@@ -29,6 +29,9 @@ export function applyEnvDefaults(
 
   const quiet = parseBool(env['CLAUDEX_QUIET']);
   if (quiet !== undefined) defaults.quiet = quiet;
+
+  const provider = env['CLAUDEX_PROVIDER']?.trim() as ProviderKind | undefined;
+  if (provider && PROVIDER_KINDS.includes(provider)) defaults.provider = provider;
 
   const rotateOn = env['CLAUDEX_ROTATE_ON']?.trim();
   if (rotateOn) {
@@ -65,6 +68,12 @@ export function loadEnvConfig(env: NodeJS.ProcessEnv = process.env): ClaudexConf
 
   const warnings: string[] = [];
   const accounts: AccountConfig[] = [];
+  // Resolved first: accounts built below must carry the provider the
+  // environment asked for, not the built-in one.
+  const defaults = applyEnvDefaults(
+    { ...DEFAULT_DEFAULTS, rotateOn: [...DEFAULT_DEFAULTS.rotateOn] },
+    env,
+  );
 
   for (const index of [...indices].sort((a, b) => a - b)) {
     const name = env[`CLAUDEX_ACCOUNT_${index}_NAME`]?.trim() || `Account ${index}`;
@@ -80,15 +89,13 @@ export function loadEnvConfig(env: NodeJS.ProcessEnv = process.env): ClaudexConf
     }
     accounts.push({
       name,
-      provider: 'oauth',
+      provider: defaults.provider,
       priority,
       token: `env:CLAUDE_TOKEN_${index}`,
       envIndex: index,
     });
   }
 
-  const defaults = { ...DEFAULT_DEFAULTS, rotateOn: [...DEFAULT_DEFAULTS.rotateOn] };
-  applyEnvDefaults(defaults, env);
   const claudePath = env['CLAUDEX_CLAUDE_BIN']?.trim();
   if (claudePath) defaults.claudePath = claudePath;
 

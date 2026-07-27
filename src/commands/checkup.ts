@@ -2,6 +2,7 @@ import { readFile, stat } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { loadContext } from './context.js';
 import { configSearchPaths } from '../config/config-manager.js';
+import { TOKEN_PROVIDERS } from '../config/schema.js';
 import { resolveClaudeBinary } from '../exec/resolve-claude.js';
 import { credentialsPath, statePath, IS_WINDOWS } from '../util/paths.js';
 import { describeRef } from '../accounts/token-source.js';
@@ -51,7 +52,7 @@ export async function checkupCommand(argv: string[]): Promise<number> {
     out.push(`  accounts            ${config.accounts.length}`);
     for (const account of config.accounts) {
       const source =
-        account.provider === 'oauth'
+        TOKEN_PROVIDERS.includes(account.provider)
           ? describeRef(account.token ?? '(none)')
           : account.provider === 'configdir'
             ? account.configDir ?? '(none)'
@@ -62,6 +63,9 @@ export async function checkupCommand(argv: string[]): Promise<number> {
       out.push(`⚠ config warning      ${warning}`);
       problems++;
     }
+    // Notes are not problems, but a provider that resolved to something other
+    // than what the file says has to be visible somewhere by default.
+    for (const note of config.notes) out.push(`· config note         ${note}`);
 
     out.push(`✓ state file          ${manager.store.path}`);
     out.push(

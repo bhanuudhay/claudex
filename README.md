@@ -98,8 +98,8 @@ claudex health                          # verify both, spends no quota
 ```console
 $ claudex health
 ACCOUNT   PROVIDER  HEALTH  PLAN         DETAIL
-Personal  oauth     ok      oauth_token  -
-Work      oauth     ok      oauth_token  -
+Personal  profile   ok      oauth_token  -
+Work      profile   ok      oauth_token  -
 ```
 
 Now use it exactly like `claude`, from any directory:
@@ -187,7 +187,7 @@ When nothing is left, claudex says so precisely and exits `77`:
 version: 1
 
 defaults:
-  provider: oauth
+  provider: profile
   max_switches: 3
   rotate_on: [usage_limit, rate_limit, overloaded, auth_expired, credit_exhausted]
   sticky: false        # true = stay on the last successful account
@@ -207,13 +207,24 @@ enabled) → `CLAUDEX_ACCOUNT_<N>_PRIORITY` → `priority:` → declaration orde
 environment overrides the config file, and the claudex env file feeds that chain
 exactly as an exported variable would.
 
-Three credential mechanisms:
+Four credential mechanisms:
 
 | `provider` | How | Resume across accounts | Platforms |
 |---|---|---|---|
-| `oauth` *(default)* | token injected per process, sharing `~/.claude` | yes | all |
-| `configdir` | separate `CLAUDE_CONFIG_DIR` per account | no — history is siloed | all |
+| `profile` *(default, also selected by `oauth`)* | token injected per process into a per-account config dir; `projects/`, settings, commands, agents, skills, plugins and hooks stay shared | yes | all |
+| `oauth-shared` | token injected per process, sharing all of `~/.claude` | yes | all |
+| `configdir` | separate `CLAUDE_CONFIG_DIR` per account, logged in separately | no — history is siloed | all |
 | `keychain` | swaps the machine-wide macOS keychain item | yes | macOS only |
+
+`profile` is the default because a token is not the only per-account state the CLI
+keeps. The stored login (`.credentials.json`), the cached account identity
+(`.claude.json`) and the usage counters all live in `CLAUDE_CONFIG_DIR`, so
+injecting a token while sharing that directory left the CLI reporting the previous
+account's expired token and `/usage` after a switch. Each account gets its own copy
+of that state under `~/.config/claudex/profiles/<account>/` (override with
+`config_dir:`), while transcripts and your own setup stay shared so a conversation
+can still resume on the account that took over. `oauth-shared` restores the old
+behaviour.
 
 See [`examples/`](examples/) for fully commented configs.
 

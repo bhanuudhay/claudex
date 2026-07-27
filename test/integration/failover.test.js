@@ -118,6 +118,32 @@ describe('failover', () => {
     }
   });
 
+  test('an expired token hands the next account its own config dir', async () => {
+    // The default provider gives every account its own CLAUDE_CONFIG_DIR, so the
+    // account that takes over is not reading the expired account's stored login
+    // and usage counters — which is why a switch used to be followed by the old
+    // account's expiry banner and `/usage` readout.
+    const sandbox = await makeSandbox({
+      script: [{ fail: 'auth_expired' }, { fail: 'auth_expired' }, { exit: 0, stdout: 'ok\n' }],
+      defaults: { provider: 'profile' },
+    });
+    try {
+      const result = await runClaudex(sandbox, ['-p', 'hi']);
+      assert.equal(result.code, 0);
+      const calls = await sandbox.calls();
+      assert.equal(calls.length, 3);
+      assert.ok(calls[0].configDir, 'each run must be pointed at a profile dir');
+      assert.equal(calls[0].configDir, calls[1].configDir, 'the injection retry stays on one profile');
+      assert.notEqual(
+        calls[2].configDir,
+        calls[0].configDir,
+        'the account switched to must not inherit the expired account state',
+      );
+    } finally {
+      await sandbox.cleanup();
+    }
+  });
+
   test('retries the same account on a server-side overload before switching', async () => {
     const sandbox = await makeSandbox({
       script: [{ fail: 'overloaded' }, { exit: 0, stdout: 'recovered\n' }],

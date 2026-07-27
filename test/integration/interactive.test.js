@@ -50,6 +50,10 @@ async function makeFixture({ script = [{ exit: 0 }], seedTranscript } = {}) {
   await writeFile(transcriptPath, seedTranscript ?? '');
 
   process.env['CLAUDE_CONFIG_DIR'] = configDir;
+  // These tests run in-process, so claudex's own config dir has to be redirected
+  // too: the default provider writes a profile directory per account, and a test
+  // must never touch the real one.
+  process.env['XDG_CONFIG_HOME'] = join(dir, 'xdg');
   process.env['FAKE_CLAUDE_LOG'] = join(dir, 'calls.jsonl');
   process.env['FAKE_CLAUDE_SCRIPT'] = JSON.stringify(script);
   process.env['FAKE_CLAUDE_STATE'] = join(dir, 'fake-state');
@@ -80,6 +84,7 @@ async function readCalls(logPath) {
 
 async function cleanup(fixture) {
   delete process.env['CLAUDE_CONFIG_DIR'];
+  delete process.env['XDG_CONFIG_HOME'];
   delete process.env['FAKE_CLAUDE_LOG'];
   delete process.env['FAKE_CLAUDE_SCRIPT'];
   delete process.env['FAKE_CLAUDE_STATE'];
@@ -183,6 +188,86 @@ describe('interactive session failover', () => {
         /usage limit reached/,
         'the stale entry is still on disk; the bound is what protects us',
       );
+    } finally {
+      await cleanup(fixture);
+    }
+  });
+
+  test('an expired token switches accounts and leaves fd injection enabled', async () => {
+    // An auth error under fd injection is ambiguous: either the CLI ignored the
+    // descriptor, or the token expired. claudex re-tests the same account with
+    // the environment variable once. When that fails too the token was at
+    // fault, so the switch must happen and the machine-wide fd preference must
+    // stay untouched — otherwise one expired token permanently downgrades every
+    // later run to putting the credential in the environment.
+    const fixture = await makeFixture({
+      script: [
+        { exit: 0, transcript: 'API Error: 401 {"type":"error","error":{"type":"authentication_error"}}' },
+        { exit: 0, transcript: 'API Error: 401 {"type":"error","error":{"type":"authentication_error"}}' },
+        { exit: 0 },
+      ],
+    });
+    try {
+      await runWithFailover({
+        manager: fixture.manager,
+        binary: FAKE_CLAUDE,
+        args: ['--session-id', SESSION_ID],
+        interactive: true,
+        sessionId: SESSION_ID,
+        maxSwitches: 2,
+        rotateOn: ['auth_expired'],
+        noRotate: false,
+        cwd: fixture.cwd,
+      });
+
+      const calls = await readCalls(fixture.logPath);
+      assert.equal(calls.length, 3, 'one fd probe, one env retry, then the other account');
+      assert.deepEqual(
+        calls.map((call) => call.via),
+        ['fd', 'env', 'fd'],
+      );
+      assert.notEqual(calls[2].tokenHash, calls[0].tokenHash, 'the third run must use the other account');
+      assert.equal(fixture.manager.stateOf('Work').health, 'needs_reauth');
+      assert.notEqual(
+        fixture.manager.state.fdInjectionWorks,
+        false,
+        'an expired token must not be recorded as fd injection being unsupported',
+      );
+    } finally {
+      await cleanup(fixture);
+    }
+  });
+
+  test('a token rejected only under fd injection records the fallback', async () => {
+    // The one outcome that does convict fd injection: the same account works as
+    // soon as the token moves into the environment.
+    const fixture = await makeFixture({
+      script: [
+        { exit: 0, transcript: 'API Error: 401 {"type":"error","error":{"type":"authentication_error"}}' },
+        { exit: 0 },
+      ],
+    });
+    try {
+      await runWithFailover({
+        manager: fixture.manager,
+        binary: FAKE_CLAUDE,
+        args: ['--session-id', SESSION_ID],
+        interactive: true,
+        sessionId: SESSION_ID,
+        maxSwitches: 2,
+        rotateOn: ['auth_expired'],
+        noRotate: false,
+        cwd: fixture.cwd,
+      });
+
+      const calls = await readCalls(fixture.logPath);
+      assert.deepEqual(
+        calls.map((call) => call.via),
+        ['fd', 'env'],
+      );
+      assert.equal(calls[0].tokenHash, calls[1].tokenHash, 'the retry stays on the same account');
+      assert.equal(fixture.manager.state.fdInjectionWorks, false);
+      assert.equal(fixture.manager.stateOf('Work').health, 'ok');
     } finally {
       await cleanup(fixture);
     }

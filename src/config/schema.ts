@@ -9,7 +9,30 @@ export class ConfigError extends Error {
   }
 }
 
-const PROVIDER_KINDS: ProviderKind[] = ['oauth', 'configdir', 'keychain'];
+export const PROVIDER_KINDS: ProviderKind[] = [
+  'profile',
+  'oauth',
+  'oauth-shared',
+  'configdir',
+  'keychain',
+];
+
+/** Providers whose credential is a token reference rather than a logged-in dir. */
+export const TOKEN_PROVIDERS: ProviderKind[] = ['profile', 'oauth', 'oauth-shared'];
+
+/**
+ * `oauth` used to mean "inject a token and leave CLAUDE_CONFIG_DIR alone". That
+ * left the CLI reading the previously logged-in account's stored credential and
+ * usage counters, so an account switched to still reported the old account's
+ * expired token and usage. It now means `profile`, which isolates that state;
+ * `oauth-shared` keeps the old behaviour for anyone who depends on it.
+ */
+const PROVIDER_ALIASES: Partial<Record<ProviderKind, ProviderKind>> = { oauth: 'profile' };
+
+export const OAUTH_ALIAS_NOTE =
+  'provider "oauth" now runs each account in its own profile directory, so a ' +
+  'switched-to account no longer reports the previous account\'s expired token or ' +
+  'usage. Set provider: oauth-shared to keep the old shared-directory behaviour.';
 
 const ROTATABLE_CLASSES: FailureClass[] = [
   'usage_limit',
@@ -20,7 +43,11 @@ const ROTATABLE_CLASSES: FailureClass[] = [
 ];
 
 export const DEFAULT_DEFAULTS: ConfigDefaults = {
-  provider: 'oauth',
+  // `profile` rather than `oauth`: an injected token alone leaves the CLI reading
+  // the previous account's cached identity and usage out of the shared config
+  // dir, which is what made a switched-to account still report the old account's
+  // expired token. See src/accounts/providers/profile-provider.ts.
+  provider: 'profile',
   maxSwitches: 3,
   rotateOn: ['usage_limit', 'rate_limit', 'overloaded', 'auth_expired', 'credit_exhausted'],
   quiet: false,
@@ -113,6 +140,7 @@ function parseAccount(
   defaults: ConfigDefaults,
   env: NodeJS.ProcessEnv,
   warnings: string[],
+  notes: string[],
 ): AccountConfig {
   if (!isRecord(raw)) throw new ConfigError(`accounts[${index}] must be a mapping`);
 
@@ -123,15 +151,17 @@ function parseAccount(
   const name = asString(nameRaw, `accounts[${index}].name`).trim();
 
   const providerRaw = raw['provider'];
-  const provider =
+  const requested =
     providerRaw === undefined || providerRaw === null
       ? defaults.provider
       : (asString(providerRaw, `accounts[${index}].provider`) as ProviderKind);
-  if (!PROVIDER_KINDS.includes(provider)) {
+  if (!PROVIDER_KINDS.includes(requested)) {
     throw new ConfigError(
       `account "${name}": provider must be one of ${PROVIDER_KINDS.join(', ')}`,
     );
   }
+  const provider = PROVIDER_ALIASES[requested] ?? requested;
+  if (provider !== requested && !notes.includes(OAUTH_ALIAS_NOTE)) notes.push(OAUTH_ALIAS_NOTE);
 
   const priorityRaw = raw['priority'];
   let priority = index + 1;
@@ -182,7 +212,7 @@ function parseAccount(
         `(the account name of the stored credentials item)`,
     );
   }
-  if (provider === 'oauth' && !account.token) {
+  if (TOKEN_PROVIDERS.includes(provider) && !account.token) {
     account.token = `store:${name}`;
   }
 
@@ -195,6 +225,7 @@ export function parseConfig(
   env: NodeJS.ProcessEnv = process.env,
 ): ClaudexConfig {
   const warnings: string[] = [];
+  const notes: string[] = [];
   if (!isRecord(raw)) throw new ConfigError(`${source}: top level must be a mapping`);
 
   const version = raw['version'];
@@ -218,7 +249,7 @@ export function parseConfig(
   if (!Array.isArray(accountsRaw)) throw new ConfigError(`${source}: \`accounts\` must be a list`);
 
   const accounts = accountsRaw.map((entry, index) =>
-    parseAccount(entry, index, defaults, env, warnings),
+    parseAccount(entry, index, defaults, env, warnings, notes),
   );
 
   const seen = new Set<string>();
@@ -229,5 +260,5 @@ export function parseConfig(
   }
   if (accounts.length === 0) throw new ConfigError(`${source}: \`accounts\` is empty`);
 
-  return { version: 1, defaults, accounts, source, warnings, notes: [] };
+  return { version: 1, defaults, accounts, source, warnings, notes };
 }

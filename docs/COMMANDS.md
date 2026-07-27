@@ -108,7 +108,7 @@ wins over the file.
 
 | Key | Type | Default | Meaning |
 |---|---|---|---|
-| `provider` | `oauth` \| `configdir` \| `keychain` | `oauth` | Credential mechanism for accounts that don't name one. |
+| `provider` | `profile` \| `oauth-shared` \| `configdir` \| `keychain` | `profile` | Credential mechanism for accounts that don't name one. `oauth` is accepted and means `profile`. |
 | `max_switches` | integer | `3` | Maximum account switches per command. |
 | `rotate_on` | list | all five classes | Which failures may trigger a switch. |
 | `quiet` | boolean | `false` | Errors only. |
@@ -122,9 +122,9 @@ Top level: `claude_path` sets the real binary explicitly.
 |---|---|---|
 | `name` | all | Used in output and `--cfo-account`. |
 | `priority` | all | Lower runs first; ties broken by declaration order. |
-| `token` | `oauth` | A reference — see below. |
+| `token` | `profile`, `oauth-shared` | A reference — see below. |
 | `provider` | — | Defaults to `defaults.provider`. |
-| `config_dir` | `configdir` | The `CLAUDE_CONFIG_DIR` to use. |
+| `config_dir` | `configdir` | The `CLAUDE_CONFIG_DIR` to use. For `profile`, where that account's isolated state lives (default `~/.config/claudex/profiles/<account>`). |
 | `keychain_service`, `keychain_account` | `keychain` | Which keychain item holds the credentials. |
 
 ### Token references
