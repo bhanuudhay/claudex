@@ -24,6 +24,9 @@ writes exactly what `claude -p "x" > out.txt` would.
 > claudex is for accounts you own and are authorised to use. See
 > [docs/SECURITY.md](docs/SECURITY.md).
 
+**Full manual:** [docs/MANUAL.md](docs/MANUAL.md) — install, accounts,
+configuration, precedence rules, account selection, troubleshooting.
+
 ## Requirements
 
 - Node.js ≥ 20
@@ -276,6 +279,8 @@ npm run typecheck
 npm test            # 92 tests, no network, no real accounts
 ```
 
+- [docs/MANUAL.md](docs/MANUAL.md) — full user manual: install, accounts,
+  configuration, precedence, account selection, troubleshooting
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — module map, failure taxonomy,
   process handling, how to add a provider
 - [docs/SECURITY.md](docs/SECURITY.md) — credential handling and threat model
